@@ -1,25 +1,44 @@
+# NodeGraph
 
-Installation information
-=======
+![Maven Central](https://img.shields.io/maven-central/v/com.nodegraph.nodegraph/nodegraph)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+A reusable node graph editor library and evaluation engine for Minecraft Forge 1.20.1.
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+## Features
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+- **Node editor**: nodes with a header, typed input/output ports, and input widgets (text / slider / button-group / dropdown)
+- **Type system**: per-type colors, registry, automatic conversion rules (rendered with a warning)
+- **Evaluation engine**: lazy Blender-style evaluation with cycle detection and per-run caching
+- **Canvas**: pan / zoom / scroll, grid, embeddable `NodeGraphWidget`
+- **Node groups**: wireframe boxes, drag-to-regroup, resize handle, per-group scale
+- **Editing**: box-select, right-click context menu, copy / cut / paste, full undo/redo, keyboard shortcuts (Ctrl+C/X/V, Del, Ctrl+Z / Ctrl+Shift+Z)
+- **Add node**: searchable overlay; dragging a port to empty space opens a type-filtered menu with auto-connect
+- **Live results**: output ports display their evaluated value each frame; widget edits recompute downstream instantly
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+## Installation
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+Gradle (Forge 1.20.1 mod consumers use `fg.deobf`):
+
+```groovy
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation fg.deobf('com.nodegraph.nodegraph:nodegraph:1.0.0')
+}
+```
+
+## In-game usage
+
+1. Obtain the **Node Graph Editor** item from the Tools creative tab.
+2. Right-click to open the editor.
+3. Drag from an output port to an input port to connect them — same type only, or auto-convert (shown with an orange warning).
+4. Right-click the canvas → **Add Node...** to insert from the catalog; drag a port onto empty space for a type-filtered menu that auto-connects the new node.
+5. Click a text input widget to edit its value; downstream results recompute live.
+6. Middle-drag to pan, Ctrl+scroll to zoom, left-drag empty space to box-select.
+
+## License
+
+[MIT](LICENSE)

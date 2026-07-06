@@ -1,6 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
+    id 'signing'
     id 'idea'
     id 'net.neoforged.moddev.legacyforge' version '2.0.141'
 }
@@ -180,16 +181,60 @@ sourceSets.main.resources.srcDir generateModMetadata
 // To avoid having to run "generateModMetadata" manually, make it run on every project reload
 legacyForge.ideSyncTask generateModMetadata
 
-// Example configuration to allow publishing using the maven-publish plugin
+// ---- Maven Central publishing (Central Publisher Portal via OSSRH Staging API) ----
+// OSSRH 已于 2025-06-30 EOL；改用 Central Publisher Portal 的 OSSRH Staging API 兼容服务。
+// 凭据（Central Portal User Token）存于 ~/.gradle/gradle.properties 的 ossrhUsername/ossrhPassword。
+// 发布后需在 central.sonatype.com 点 Publish，或调 POST /manual/upload/defaultRepository/<namespace>。
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.named('javadoc', Javadoc).configure {
+    options.addStringOption('Xdoclint:none', '-quiet')
+    options.encoding = 'UTF-8'
+}
+
+signing {
+    sign publishing.publications
+}
+
 publishing {
     publications {
-        register('mavenJava', MavenPublication) {
+        mavenJava(MavenPublication) {
             from components.java
+            pom {
+                name = mod_name
+                description = mod_description
+                url = "https://github.com/${githubUserName}/${githubRepoName}"
+                licenses {
+                    license {
+                        name = 'MIT'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                scm {
+                    connection = "scm:git:git://github.com/${githubUserName}/${githubRepoName}.git"
+                    developerConnection = "scm:git:ssh://github.com/${githubUserName}/${githubRepoName}.git"
+                    url = "https://github.com/${githubUserName}/${githubRepoName}"
+                }
+                developers {
+                    developer {
+                        id = githubUserName
+                        name = githubUserName
+                    }
+                }
+            }
         }
     }
     repositories {
         maven {
-            url "file://${project.projectDir}/repo"
+            name = 'ossrh-staging-api'
+            url = 'https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/'
+            credentials {
+                username = findProperty('ossrhUsername') as String
+                password = findProperty('ossrhPassword') as String
+            }
         }
     }
 }
