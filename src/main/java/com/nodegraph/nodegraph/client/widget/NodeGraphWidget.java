@@ -1,8 +1,12 @@
 package com.nodegraph.nodegraph.client.widget;
 
+import com.nodegraph.nodegraph.api.command.UndoManager;
 import com.nodegraph.nodegraph.api.model.Connection;
+import com.nodegraph.nodegraph.api.model.ConnectResult;
 import com.nodegraph.nodegraph.api.model.Node;
 import com.nodegraph.nodegraph.api.model.NodeGraph;
+import com.nodegraph.nodegraph.api.model.NodeId;
+import com.nodegraph.nodegraph.client.interaction.NodeInteractionController;
 import com.nodegraph.nodegraph.client.layout.NodeLayout;
 import com.nodegraph.nodegraph.client.render.ConnectionRenderer;
 import com.nodegraph.nodegraph.client.render.NodeRenderer;
@@ -41,6 +45,8 @@ public class NodeGraphWidget extends AbstractWidget {
     private final NodeGraph graph;
     private final Viewport viewport;
     private final Font font;
+    private final UndoManager undo;
+    private final NodeInteractionController controller;
 
     private enum State { IDLE, PANNING }
 
@@ -55,12 +61,14 @@ public class NodeGraphWidget extends AbstractWidget {
     /** 连线拖拽预览状态（TaskG 交付渲染能力，数据源归 TaskH）。 */
     public static final class ConnectionDrag {
         private final NodeLayout fromLayout;
-        private final int outIdx;
+        private final int portIndex;
+        private final boolean fromOutput;
         private final int color;
 
-        public ConnectionDrag(NodeLayout fromLayout, int outIdx, int color) {
+        public ConnectionDrag(NodeLayout fromLayout, int portIndex, boolean fromOutput, int color) {
             this.fromLayout = fromLayout;
-            this.outIdx = outIdx;
+            this.portIndex = portIndex;
+            this.fromOutput = fromOutput;
             this.color = color;
         }
 
@@ -68,8 +76,12 @@ public class NodeGraphWidget extends AbstractWidget {
             return fromLayout;
         }
 
-        public int outIdx() {
-            return outIdx;
+        public int portIndex() {
+            return portIndex;
+        }
+
+        public boolean fromOutput() {
+            return fromOutput;
         }
 
         public int color() {
@@ -77,11 +89,13 @@ public class NodeGraphWidget extends AbstractWidget {
         }
     }
 
-    public NodeGraphWidget(int x, int y, int width, int height, NodeGraph graph) {
+    public NodeGraphWidget(int x, int y, int width, int height, NodeGraph graph, UndoManager undo) {
         super(x, y, width, height, Component.empty());
         this.graph = Objects.requireNonNull(graph, "graph");
+        this.undo = Objects.requireNonNull(undo, "undo");
         this.viewport = new Viewport();
         this.font = Minecraft.getInstance().font;
+        this.controller = new NodeInteractionController(this);
     }
 
     public NodeGraph graph() {
@@ -90,6 +104,10 @@ public class NodeGraphWidget extends AbstractWidget {
 
     public Viewport viewport() {
         return viewport;
+    }
+
+    public UndoManager undo() {
+        return undo;
     }
 
     public ConnectionDrag pending() {
@@ -102,13 +120,16 @@ public class NodeGraphWidget extends AbstractWidget {
 
     @Override
     public boolean isValidClickButton(int button) {
-        return button == 0 || button == 1 || button == 2;
+        return button == 0 || button == 2;
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (!isValidClickButton(button) || !clicked(mx, my)) {
             return false;
+        }
+        if (button == 0 && controller.onMouseClicked(mx, my, button)) {
+            return true;
         }
         state = State.PANNING;
         panButton = button;
@@ -119,6 +140,9 @@ public class NodeGraphWidget extends AbstractWidget {
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
+        if (button == 0 && controller.onMouseReleased(mx, my, button)) {
+            return true;
+        }
         if (state == State.PANNING && button == panButton) {
             state = State.IDLE;
             panButton = -1;
@@ -129,6 +153,9 @@ public class NodeGraphWidget extends AbstractWidget {
 
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dragX, double dragY) {
+        if (button == 0 && controller.onMouseDragged(mx, my, button)) {
+            return true;
+        }
         if (state == State.PANNING && button == panButton) {
             viewport.pan(mx - lastMouseX, my - lastMouseY);
             lastMouseX = mx;
@@ -207,20 +234,75 @@ public class NodeGraphWidget extends AbstractWidget {
     }
 
     /**
-     * 渲染拖拽预览线（pending != null 时）。从源输出端口到当前鼠标位置。
+     * 渲染拖拽预览线（pending != null 时）。从源端口到当前鼠标位置。
+     * 预览色据落点类型校验变化：未命中→半透明类型色；兼容→满 alpha 类型色；不兼容→半透明红。
      */
     protected void renderPending(GuiGraphics g, int mouseX, int mouseY) {
         if (pending == null) {
             return;
         }
-        NodeLayout.PortAnchor a = pending.fromLayout().outputPort(pending.outIdx());
+        NodeLayout layout = pending.fromLayout();
+        NodeLayout.PortAnchor a = pending.fromOutput()
+                ? layout.outputPort(pending.portIndex())
+                : layout.inputPort(pending.portIndex());
         int x0 = getX();
         int y0 = getY();
         double toWx = viewport.screenToWorldX(mouseX, x0);
         double toWy = viewport.screenToWorldY(mouseY, y0);
-        int color = ConnectionRenderer.withAlpha(pending.color(), ConnectionRenderer.PREVIEW_ALPHA);
+        int color = previewColor(toWx, toWy);
         ConnectionRenderer.renderPreview(g, viewport, x0, y0, a.x(), a.y(), toWx, toWy, color);
     }
+
+    private int previewColor(double wx, double wy) {
+        Optional<DropTarget> drop = pending.fromOutput()
+                ? pickInputPortAt(wx, wy)
+                : pickOutputPortAt(wx, wy);
+        if (drop.isEmpty()) {
+            return ConnectionRenderer.withAlpha(pending.color(), ConnectionRenderer.PREVIEW_ALPHA);
+        }
+        NodeId fromNode;
+        int fromOutput;
+        NodeId toNode;
+        int toInput;
+        if (pending.fromOutput()) {
+            fromNode = pending.fromLayout().node().id();
+            fromOutput = pending.portIndex();
+            toNode = drop.get().nodeId();
+            toInput = drop.get().index();
+        } else {
+            fromNode = drop.get().nodeId();
+            fromOutput = drop.get().index();
+            toNode = pending.fromLayout().node().id();
+            toInput = pending.portIndex();
+        }
+        ConnectResult r = graph.canConnect(fromNode, fromOutput, toNode, toInput);
+        if (r == ConnectResult.INCOMPATIBLE) {
+            return ConnectionRenderer.withAlpha(0xFF0000, ConnectionRenderer.PREVIEW_ALPHA);
+        }
+        return pending.color() | 0xFF000000;
+    }
+
+    private Optional<DropTarget> pickInputPortAt(double wx, double wy) {
+        for (Node n : graph.nodes()) {
+            Optional<Integer> idx = new NodeLayout(n).pickInputPort(wx, wy);
+            if (idx.isPresent()) {
+                return Optional.of(new DropTarget(n.id(), idx.get()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<DropTarget> pickOutputPortAt(double wx, double wy) {
+        for (Node n : graph.nodes()) {
+            Optional<Integer> idx = new NodeLayout(n).pickOutputPort(wx, wy);
+            if (idx.isPresent()) {
+                return Optional.of(new DropTarget(n.id(), idx.get()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private record DropTarget(NodeId nodeId, int index) {}
 
     /**
      * 渲染图中所有（可见）节点。返回首个命中鼠标的端口/组件 tooltip 行，供调用方在 scissor 外绘制。

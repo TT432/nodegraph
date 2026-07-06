@@ -1,5 +1,6 @@
 package com.nodegraph.nodegraph.client.widget;
 
+import com.nodegraph.nodegraph.api.command.UndoManager;
 import com.nodegraph.nodegraph.api.model.NodeGraph;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -18,6 +19,7 @@ import java.util.Objects;
  */
 public class NodeGraphScreen extends Screen {
     private final NodeGraph graph;
+    private final UndoManager undo = new UndoManager();
     private NodeGraphWidget canvas;
 
     public NodeGraphScreen(Component title, NodeGraph graph) {
@@ -29,9 +31,13 @@ public class NodeGraphScreen extends Screen {
         return canvas;
     }
 
+    public UndoManager undo() {
+        return undo;
+    }
+
     @Override
     protected void init() {
-        canvas = addRenderableWidget(new NodeGraphWidget(0, 0, width, height, graph));
+        canvas = addRenderableWidget(new NodeGraphWidget(0, 0, width, height, graph, undo));
     }
 
     @Override

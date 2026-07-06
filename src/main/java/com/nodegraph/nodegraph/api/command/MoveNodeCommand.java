@@ -26,6 +26,24 @@ public final class MoveNodeCommand implements Command {
         this.newY = newY;
     }
 
+    /**
+     * Full constructor with the previous position supplied up front (used when
+     * the caller already knows the origin — e.g. a live drag that mutated the
+     * node during interaction and now commits a single command on release).
+     * {@code captured} is set {@code true} so {@link #execute()} skips its
+     * lazy capture and uses the supplied {@code oldX/oldY} for {@link #undo()}.
+     */
+    public MoveNodeCommand(NodeGraph graph, NodeId target,
+                           double oldX, double oldY, double newX, double newY) {
+        this.graph = Objects.requireNonNull(graph, "graph");
+        this.target = Objects.requireNonNull(target, "target");
+        this.oldX = oldX;
+        this.oldY = oldY;
+        this.newX = newX;
+        this.newY = newY;
+        this.captured = true;
+    }
+
     @Override
     public void execute() {
         Node node = graph.node(target);
