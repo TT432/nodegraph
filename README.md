@@ -1,6 +1,6 @@
 # NodeGraph
 
-![Maven Central](https://img.shields.io/maven-central/v/com.nodegraph.nodegraph/nodegraph)
+![Maven Central](https://img.shields.io/maven-central/v/io.github.tt432/nodegraph)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 A reusable node graph editor library and evaluation engine for Minecraft Forge 1.20.1.
@@ -26,7 +26,7 @@ repositories {
 }
 
 dependencies {
-    implementation fg.deobf('com.nodegraph.nodegraph:nodegraph:1.0.0')
+    implementation fg.deobf('io.github.tt432:nodegraph:1.0.0')
 }
 ```
 
