@@ -61,6 +61,31 @@ public final class NodeGraph {
         return node;
     }
 
+    /**
+     * Low-level recovery primitive: insert a fully-formed {@link Node} as-is,
+     * <b>without</b> allocating a new id. Intended for the command system
+     * (undo/redo) and serialization/deserialization, where object identity
+     * (the {@link NodeId}) must survive round-trips so existing connections
+     * and group memberships keep resolving.
+     *
+     * <p>Validates that the id does not collide with an existing node. Advances
+     * {@code nextNodeId} past the inserted node's id to avoid future
+     * collisions with factory-allocated ids.
+     *
+     * @throws IllegalStateException if a node with the same id already exists.
+     */
+    public void insertNode(Node node) {
+        Objects.requireNonNull(node, "node");
+        NodeId id = node.id();
+        if (nodes.containsKey(id)) {
+            throw new IllegalStateException("Node id already present: " + id);
+        }
+        nodes.put(id, node);
+        if (id.value() >= nextNodeId) {
+            nextNodeId = id.value() + 1;
+        }
+    }
+
     public void removeNode(NodeId id) {
         Node node = nodes.remove(id);
         if (node == null) {
@@ -89,6 +114,28 @@ public final class NodeGraph {
         NodeGroup group = new NodeGroup(id, header, x, y, width, height);
         groups.put(id, group);
         return group;
+    }
+
+    /**
+     * Low-level recovery primitive: insert a fully-formed {@link NodeGroup}
+     * as-is, <b>without</b> allocating a new id. Intended for the command
+     * system (undo/redo) and serialization/deserialization, where group
+     * identity must survive round-trips so member nodes keep resolving.
+     *
+     * <p>Validates that the id does not collide. Advances {@code nextGroupId}.
+     *
+     * @throws IllegalStateException if a group with the same id already exists.
+     */
+    public void insertGroup(NodeGroup group) {
+        Objects.requireNonNull(group, "group");
+        NodeGroupId id = group.id();
+        if (groups.containsKey(id)) {
+            throw new IllegalStateException("Group id already present: " + id);
+        }
+        groups.put(id, group);
+        if (id.value() >= nextGroupId) {
+            nextGroupId = id.value() + 1;
+        }
     }
 
     public void removeGroup(NodeGroupId id) {
@@ -188,6 +235,40 @@ public final class NodeGraph {
 
     public void disconnect(Connection c) {
         connections.remove(c);
+    }
+
+    /**
+     * Low-level recovery primitive: append a fully-formed {@link Connection}
+     * as-is, bypassing the single-source-replacement and type-checking
+     * semantics of {@link #connect}. Intended for the command system
+     * (undo/redo) and serialization/deserialization, where the connection
+     * was already validated at original creation time.
+     *
+     * <p>Validates that both endpoints exist and that the target input is not
+     * already driven by a <b>different</b> connection (preserves the input
+     * single-source invariant). Does not perform type compatibility checks.
+     *
+     * @throws IllegalArgumentException  if either endpoint node does not exist.
+     * @throws IllegalStateException     if a different connection already
+     *                                  drives the target input.
+     */
+    public void addConnection(Connection c) {
+        Objects.requireNonNull(c, "c");
+        // Validate endpoints exist (throws IllegalArgumentException via node()).
+        node(c.fromNode());
+        node(c.toNode());
+        // Preserve single-source invariant: allow re-adding the exact same
+        // connection (idempotent), but reject a different one on this input.
+        for (Connection existing : connections) {
+            if (existing.toNode().equals(c.toNode()) && existing.toInput() == c.toInput()
+                    && !existing.equals(c)) {
+                throw new IllegalStateException("Input already driven by a different connection: " + existing);
+            }
+        }
+        // Avoid duplicate if the exact connection is already present.
+        if (!connections.contains(c)) {
+            connections.add(c);
+        }
     }
 
     public List<Connection> connections() {
