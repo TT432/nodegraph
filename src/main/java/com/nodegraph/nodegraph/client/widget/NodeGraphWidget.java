@@ -6,17 +6,21 @@ import com.nodegraph.nodegraph.api.command.CompositeCommand;
 import com.nodegraph.nodegraph.api.command.GroupNodesCommand;
 import com.nodegraph.nodegraph.api.command.RemoveGroupCommand;
 import com.nodegraph.nodegraph.api.command.RemoveNodeCommand;
+import com.nodegraph.nodegraph.api.command.SetGroupTransformCommand;
 import com.nodegraph.nodegraph.api.command.UndoManager;
 import com.nodegraph.nodegraph.api.model.Connection;
 import com.nodegraph.nodegraph.api.model.ConnectResult;
 import com.nodegraph.nodegraph.api.model.Node;
 import com.nodegraph.nodegraph.api.model.NodeGraph;
+import com.nodegraph.nodegraph.api.model.NodeGroup;
 import com.nodegraph.nodegraph.api.model.NodeGroupId;
 import com.nodegraph.nodegraph.api.model.NodeId;
+import com.nodegraph.nodegraph.client.interaction.GroupPick;
 import com.nodegraph.nodegraph.client.interaction.NodeInteractionController;
 import com.nodegraph.nodegraph.client.interaction.SelectionController;
 import com.nodegraph.nodegraph.client.layout.NodeLayout;
 import com.nodegraph.nodegraph.client.render.ConnectionRenderer;
+import com.nodegraph.nodegraph.client.render.NodeGroupRenderer;
 import com.nodegraph.nodegraph.client.render.NodeRenderer;
 import com.nodegraph.nodegraph.client.selection.SelectionModel;
 import com.nodegraph.nodegraph.client.viewport.Viewport;
@@ -258,6 +262,11 @@ public class NodeGraphWidget extends AbstractWidget {
         }
         double s = viewport.scale();
         if (Screen.hasControlDown()) {
+            Optional<NodeGroupId> gh = GroupPick.findGroupHeader(graph, worldX(mx), worldY(my));
+            if (gh.isPresent()) {
+                adjustGroupScale(gh.get(), delta);
+                return true;
+            }
             double factor = Math.pow(ZOOM_FACTOR, delta);
             viewport.zoom(factor, mx, my, getX(), getY());
         } else if (Screen.hasShiftDown()) {
@@ -266,6 +275,18 @@ public class NodeGraphWidget extends AbstractWidget {
             viewport.pan(0, delta * SCROLL_SPEED * s);
         }
         return true;
+    }
+
+    private void adjustGroupScale(NodeGroupId gid, double delta) {
+        NodeGroup grp = graph.group(gid);
+        double factor = Math.pow(1.1, delta);
+        double newScale = grp.scale() * factor;
+        if (newScale < NodeGroupRenderer.MIN_GROUP_SCALE) newScale = NodeGroupRenderer.MIN_GROUP_SCALE;
+        if (newScale > NodeGroupRenderer.MAX_GROUP_SCALE) newScale = NodeGroupRenderer.MAX_GROUP_SCALE;
+        if (newScale == grp.scale()) {
+            return;
+        }
+        undo.apply(new SetGroupTransformCommand(graph, gid, grp.x(), grp.y(), grp.width(), grp.height(), newScale));
     }
 
     // ---- selection / clipboard actions (shared by menu + keyboard) --------
@@ -334,6 +355,11 @@ public class NodeGraphWidget extends AbstractWidget {
     public void selectSingle(NodeId id) {
         selection.clear();
         selection.addNode(id);
+    }
+
+    public void selectSingleGroup(NodeGroupId id) {
+        selection.clear();
+        selection.addGroup(id);
     }
 
     public void clearSelection() {
@@ -408,6 +434,7 @@ public class NodeGraphWidget extends AbstractWidget {
         g.fill(x0, y0, x1, y1, COLOR_BG);
         g.enableScissor(x0, y0, x1, y1);
         renderGrid(g);
+        renderGroups(g);
         renderConnections(g);
         Optional<List<Component>> tooltip = renderNodes(g, mouseX, mouseY);
         renderSelectionBox(g);
@@ -418,6 +445,15 @@ public class NodeGraphWidget extends AbstractWidget {
         }
         if (menu != null) {
             menu.render(g, font, mouseX, mouseY);
+        }
+    }
+
+    protected void renderGroups(GuiGraphics g) {
+        int x0 = getX();
+        int y0 = getY();
+        for (NodeGroup grp : graph.groups()) {
+            boolean selected = selection.containsGroup(grp.id());
+            NodeGroupRenderer.render(g, font, grp, viewport, x0, y0, selected);
         }
     }
 

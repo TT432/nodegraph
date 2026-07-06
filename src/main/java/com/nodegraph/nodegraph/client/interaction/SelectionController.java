@@ -1,7 +1,9 @@
 package com.nodegraph.nodegraph.client.interaction;
 
 import com.nodegraph.nodegraph.api.model.Node;
+import com.nodegraph.nodegraph.api.model.NodeGroupId;
 import com.nodegraph.nodegraph.api.model.NodeId;
+import com.nodegraph.nodegraph.api.model.NodeGroup;
 import com.nodegraph.nodegraph.client.layout.NodeLayout;
 import com.nodegraph.nodegraph.client.selection.SelectionModel;
 import com.nodegraph.nodegraph.client.widget.NodeGraphWidget;
@@ -100,12 +102,26 @@ public final class SelectionController {
                 hits.add(n.id());
             }
         }
+        List<NodeGroupId> groupHits = new ArrayList<>();
+        for (NodeGroup grp : widget.graph().groups()) {
+            double gx = grp.x();
+            double gy = grp.y();
+            double gx2 = gx + grp.width();
+            double gy2 = gy + grp.height();
+            if (gx <= maxX && gx2 >= minX && gy <= maxY && gy2 >= minY) {
+                groupHits.add(grp.id());
+            }
+        }
         if (additive) {
             for (NodeId id : hits) {
                 sel.addNode(id);
             }
+            for (NodeGroupId gid : groupHits) {
+                sel.addGroup(gid);
+            }
         } else {
             sel.setNodes(hits);
+            sel.setGroups(groupHits);
         }
     }
 
