@@ -9,11 +9,16 @@ import com.nodegraph.nodegraph.api.command.GroupNodesCommand;
 import com.nodegraph.nodegraph.api.command.RemoveGroupCommand;
 import com.nodegraph.nodegraph.api.command.RemoveNodeCommand;
 import com.nodegraph.nodegraph.api.command.SetGroupTransformCommand;
+import com.nodegraph.nodegraph.api.command.SetWidgetValueCommand;
 import com.nodegraph.nodegraph.api.command.UndoManager;
 import com.nodegraph.nodegraph.api.def.NodeDefinition;
 import com.nodegraph.nodegraph.api.def.NodeDefinitionCatalog;
+import com.nodegraph.nodegraph.api.eval.EvaluationResult;
+import com.nodegraph.nodegraph.api.eval.Evaluator;
 import com.nodegraph.nodegraph.api.model.Connection;
 import com.nodegraph.nodegraph.api.model.ConnectResult;
+import com.nodegraph.nodegraph.api.model.InputWidget;
+import com.nodegraph.nodegraph.api.model.InputWidgetKind;
 import com.nodegraph.nodegraph.api.model.Node;
 import com.nodegraph.nodegraph.api.model.NodeGraph;
 import com.nodegraph.nodegraph.api.model.NodeGroup;
@@ -34,12 +39,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -96,6 +103,11 @@ public class NodeGraphWidget extends AbstractWidget {
     private ContextMenu menu;
     /** 添加节点浮层；null 表示关闭。 */
     private AddNodeOverlay addNodeOverlay;
+    /** 正在编辑的 TEXT InputWidget 的 EditBox；null 表示无编辑。 */
+    private EditBox activeEdit;
+    private NodeId editNode;
+    private int editWidgetIndex = -1;
+    private String editKey;
 
     /** 连线拖拽预览状态。 */
     public static final class ConnectionDrag {
@@ -186,6 +198,15 @@ public class NodeGraphWidget extends AbstractWidget {
             }
             return true;
         }
+        if (activeEdit != null) {
+            boolean inBox = mx >= activeEdit.getX() && mx <= activeEdit.getX() + activeEdit.getWidth()
+                    && my >= activeEdit.getY() && my <= activeEdit.getY() + activeEdit.getHeight();
+            if (inBox && button == 0) {
+                activeEdit.mouseClicked(mx, my, button);
+                return true;
+            }
+            confirmEdit();
+        }
         if (!clicked(mx, my)) {
             return false;
         }
@@ -203,6 +224,11 @@ public class NodeGraphWidget extends AbstractWidget {
         }
         if (button == 0) {
             if (controller.onMouseClicked(mx, my, button)) {
+                return true;
+            }
+            TextWidgetHit hit = pickTextWidget(worldX(mx), worldY(my));
+            if (hit != null) {
+                openEdit(hit.node(), hit.index());
                 return true;
             }
             // empty canvas -> start box select
@@ -544,6 +570,89 @@ public class NodeGraphWidget extends AbstractWidget {
         return false;
     }
 
+    // ---- widget editing --------------------------------------------------
+
+    public boolean editKey(int keyCode) {
+        if (activeEdit == null) {
+            return false;
+        }
+        if (keyCode == 256) { // ESC
+            cancelEdit();
+            return true;
+        }
+        if (keyCode == 257 || keyCode == 335) { // Enter / KP_Enter
+            confirmEdit();
+            return true;
+        }
+        activeEdit.keyPressed(keyCode, 0, 0);
+        return true;
+    }
+
+    public boolean editChar(char codePoint) {
+        if (activeEdit == null) {
+            return false;
+        }
+        activeEdit.charTyped(codePoint, 0);
+        return true;
+    }
+
+    private void openEdit(Node node, int widgetIndex) {
+        InputWidget w = node.widgets().get(widgetIndex);
+        int x0 = getX();
+        int y0 = getY();
+        double s = viewport.scale();
+        double sx = viewport.worldToScreenX(node.x(), x0);
+        double wy = node.y() + NodeLayout.HEADER_HEIGHT + widgetIndex * NodeLayout.ROW_HEIGHT;
+        double sy = viewport.worldToScreenY(wy, y0);
+        int sw = (int) Math.round(NodeLayout.NODE_WIDTH * s);
+        int sh = (int) Math.round(NodeLayout.ROW_HEIGHT * s);
+        EditBox box = new EditBox(font, (int) Math.round(sx), (int) Math.round(sy), sw, sh, Component.literal("edit"));
+        box.setMaxLength(256);
+        box.setValue(String.valueOf(w.currentValue()));
+        box.setCanLoseFocus(false);
+        box.setFocused(true);
+        this.activeEdit = box;
+        this.editNode = node.id();
+        this.editWidgetIndex = widgetIndex;
+        this.editKey = w.key();
+    }
+
+    private void confirmEdit() {
+        if (activeEdit == null) {
+            return;
+        }
+        String newVal = activeEdit.getValue();
+        Node n = graph.node(editNode);
+        String oldVal = String.valueOf(n.widgets().get(editWidgetIndex).currentValue());
+        if (!newVal.equals(oldVal)) {
+            undo.apply(new SetWidgetValueCommand(graph, editNode, editKey, newVal));
+        }
+        cancelEdit();
+    }
+
+    private void cancelEdit() {
+        activeEdit = null;
+        editNode = null;
+        editWidgetIndex = -1;
+        editKey = null;
+    }
+
+    private record TextWidgetHit(Node node, int index) {}
+
+    private TextWidgetHit pickTextWidget(double wx, double wy) {
+        for (Node n : graph.nodes()) {
+            NodeLayout l = new NodeLayout(n);
+            Optional<Integer> idx = l.pickInputWidget(wx, wy);
+            if (idx.isPresent()) {
+                if (n.widgets().get(idx.get()).kind() == InputWidgetKind.TEXT) {
+                    return new TextWidgetHit(n, idx.get());
+                }
+                return null;
+            }
+        }
+        return null;
+    }
+
     // ---- rendering --------------------------------------------------------
 
     @Override
@@ -557,7 +666,13 @@ public class NodeGraphWidget extends AbstractWidget {
         renderGrid(g);
         renderGroups(g);
         renderConnections(g);
-        Optional<List<Component>> tooltip = renderNodes(g, mouseX, mouseY);
+        EvaluationResult evalResult;
+        try {
+            evalResult = new Evaluator().evaluateAll(graph);
+        } catch (RuntimeException e) {
+            evalResult = null;
+        }
+        Optional<List<Component>> tooltip = renderNodes(g, mouseX, mouseY, evalResult);
         renderSelectionBox(g);
         renderPending(g, mouseX, mouseY);
         g.disableScissor();
@@ -569,6 +684,9 @@ public class NodeGraphWidget extends AbstractWidget {
         }
         if (addNodeOverlay != null && addNodeOverlay.isOpen()) {
             addNodeOverlay.render(g, mouseX, mouseY);
+        }
+        if (activeEdit != null) {
+            activeEdit.render(g, mouseX, mouseY, partialTick);
         }
     }
 
@@ -668,7 +786,7 @@ public class NodeGraphWidget extends AbstractWidget {
 
     private record DropTarget(NodeId nodeId, int index) {}
 
-    protected Optional<List<Component>> renderNodes(GuiGraphics g, int mouseX, int mouseY) {
+    protected Optional<List<Component>> renderNodes(GuiGraphics g, int mouseX, int mouseY, EvaluationResult evalResult) {
         int x0 = getX();
         int y0 = getY();
         int x1 = x0 + width;
@@ -687,7 +805,17 @@ public class NodeGraphWidget extends AbstractWidget {
             double wx = viewport.screenToWorldX(mouseX, x0);
             double wy = viewport.screenToWorldY(mouseY, y0);
             boolean hovered = layout.bounds().contains(wx, wy);
-            NodeRenderer.render(g, font, layout, viewport, x0, y0, hovered);
+            Map<String, Object> outputs = null;
+            boolean hasError = false;
+            if (evalResult != null) {
+                try {
+                    outputs = evalResult.outputsOf(node.id());
+                } catch (RuntimeException e) {
+                    hasError = true;
+                }
+            }
+            int editingIdx = (editNode != null && editNode.equals(node.id())) ? editWidgetIndex : -1;
+            NodeRenderer.render(g, font, layout, viewport, x0, y0, hovered, outputs, hasError, editingIdx);
             if (selection.containsNode(node.id())) {
                 int ix = (int) Math.floor(sx);
                 int iy = (int) Math.floor(sy);

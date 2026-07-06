@@ -69,6 +69,9 @@ public class NodeGraphScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (canvas != null && canvas.editKey(keyCode)) {
+            return true;
+        }
         if (canvas != null && canvas.overlayKey(keyCode)) {
             return true;
         }
@@ -86,6 +89,9 @@ public class NodeGraphScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if (canvas != null && canvas.editChar(codePoint)) {
+            return true;
+        }
         if (canvas != null && canvas.overlayChar(codePoint)) {
             return true;
         }

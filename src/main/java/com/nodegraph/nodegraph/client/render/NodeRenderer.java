@@ -11,6 +11,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -23,12 +24,20 @@ import java.util.Optional;
  */
 public final class NodeRenderer {
     private static final int FONT_HEIGHT = 9;
+    private static final int ERROR_COLOR = 0xFFFF5555;
 
     private NodeRenderer() {}
 
-    /** 渲染单个节点。{@code hovered} 控制描边高亮（鼠标悬停其 bounds）。 */
+    /**
+     * 渲染单个节点。{@code hovered} 控制描边高亮（鼠标悬停其 bounds）。
+     *
+     * @param outputs            该节点的求值输出（key=port key → value）；null=未求值/无值，不显示
+     * @param hasError           该节点求值异常（环/求值失败）→ output 标签显示 {@code name = !}
+     * @param editingWidgetIndex 正在用 EditBox 编辑的 widget 行号；-1=无。该行跳过文本，由 EditBox 接管
+     */
     public static void render(GuiGraphics g, Font font, NodeLayout layout, Viewport vp,
-                              int originX, int originY, boolean hovered) {
+                              int originX, int originY, boolean hovered,
+                              Map<String, Object> outputs, boolean hasError, int editingWidgetIndex) {
         Objects.requireNonNull(g, "g");
         Objects.requireNonNull(font, "font");
         Objects.requireNonNull(layout, "layout");
@@ -59,6 +68,9 @@ public final class NodeRenderer {
 
         // InputWidget 行（名字左 + 当前值文本右对齐）
         for (int i = 0; i < layout.widgetRowCount(); i++) {
+            if (i == editingWidgetIndex) {
+                continue;
+            }
             InputWidget w = node.widgets().get(i);
             int localRowY = i * (int) Math.round(NodeLayout.ROW_HEIGHT)
                     + (int) Math.round(NodeLayout.HEADER_HEIGHT)
@@ -96,12 +108,23 @@ public final class NodeRenderer {
             int ay = portTopLocal + i * (int) Math.round(NodeLayout.ROW_HEIGHT)
                     + (int) Math.round(NodeLayout.ROW_HEIGHT / 2.0);
             drawPortDot(g, ax, ay, node.outputs().get(i).type().color());
-            Component label = node.outputs().get(i).name();
-            int lw = font.width(label);
-            g.drawString(font, label,
+            Port port = node.outputs().get(i);
+            String labelText = port.name().getString();
+            int labelColor = NodeLayout.TEXT_COLOR;
+            if (hasError) {
+                labelText = labelText + " = !";
+                labelColor = ERROR_COLOR;
+            } else if (outputs != null) {
+                Object v = outputs.get(port.key());
+                if (v != null) {
+                    labelText = labelText + " = " + String.valueOf(v);
+                }
+            }
+            int lw = font.width(labelText);
+            g.drawString(font, Component.literal(labelText),
                     ax - (int) Math.round(NodeLayout.PORT_RADIUS) - (int) Math.round(NodeLayout.PADDING / 2.0) - lw,
                     ay - (int) Math.round((double) FONT_HEIGHT / 2.0),
-                    NodeLayout.TEXT_COLOR);
+                    labelColor);
         }
 
         // 描边（在节点局部坐标，覆盖全节点）
