@@ -1,14 +1,21 @@
 package com.nodegraph.nodegraph.client.widget;
 
+import com.nodegraph.nodegraph.api.model.Node;
 import com.nodegraph.nodegraph.api.model.NodeGraph;
+import com.nodegraph.nodegraph.client.layout.NodeLayout;
+import com.nodegraph.nodegraph.client.render.NodeRenderer;
 import com.nodegraph.nodegraph.client.viewport.Viewport;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * 节点图画布 Widget。可经 {@code addRenderableWidget} 嵌入任意 Screen。
@@ -31,6 +38,7 @@ public class NodeGraphWidget extends AbstractWidget {
 
     private final NodeGraph graph;
     private final Viewport viewport;
+    private final Font font;
 
     private enum State { IDLE, PANNING }
 
@@ -43,6 +51,7 @@ public class NodeGraphWidget extends AbstractWidget {
         super(x, y, width, height, Component.empty());
         this.graph = Objects.requireNonNull(graph, "graph");
         this.viewport = new Viewport();
+        this.font = Minecraft.getInstance().font;
     }
 
     public NodeGraph graph() {
@@ -126,7 +135,41 @@ public class NodeGraphWidget extends AbstractWidget {
         g.fill(x0, y0, x1, y1, COLOR_BG);
         g.enableScissor(x0, y0, x1, y1);
         renderGrid(g);
+        Optional<List<Component>> tooltip = renderNodes(g, mouseX, mouseY);
         g.disableScissor();
+        if (tooltip.isPresent()) {
+            g.renderComponentTooltip(font, tooltip.get(), mouseX, mouseY);
+        }
+    }
+
+    /**
+     * 渲染图中所有（可见）节点。返回首个命中鼠标的端口/组件 tooltip 行，供调用方在 scissor 外绘制。
+     */
+    protected Optional<List<Component>> renderNodes(GuiGraphics g, int mouseX, int mouseY) {
+        int x0 = getX();
+        int y0 = getY();
+        int x1 = x0 + width;
+        int y1 = y0 + height;
+        double s = viewport.scale();
+        Optional<List<Component>> firstHit = Optional.empty();
+        for (Node node : graph.nodes()) {
+            NodeLayout layout = new NodeLayout(node);
+            double sx = viewport.worldToScreenX(node.x(), x0);
+            double sy = viewport.worldToScreenY(node.y(), y0);
+            double sw = NodeLayout.NODE_WIDTH * s;
+            double sh = layout.height() * s;
+            if (sx + sw < x0 || sx > x1 || sy + sh < y0 || sy > y1) {
+                continue;
+            }
+            double wx = viewport.screenToWorldX(mouseX, x0);
+            double wy = viewport.screenToWorldY(mouseY, y0);
+            boolean hovered = layout.bounds().contains(wx, wy);
+            NodeRenderer.render(g, font, layout, viewport, x0, y0, hovered);
+            if (firstHit.isEmpty()) {
+                firstHit = NodeRenderer.pickHover(layout, viewport, x0, y0, mouseX, mouseY);
+            }
+        }
+        return firstHit;
     }
 
     /**
