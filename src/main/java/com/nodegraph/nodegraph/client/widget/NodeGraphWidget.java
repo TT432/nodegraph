@@ -1,13 +1,17 @@
 package com.nodegraph.nodegraph.client.widget;
 
 import com.nodegraph.nodegraph.api.clipboard.Clipboard;
+import com.nodegraph.nodegraph.api.command.AddNodeCommand;
 import com.nodegraph.nodegraph.api.command.Command;
 import com.nodegraph.nodegraph.api.command.CompositeCommand;
+import com.nodegraph.nodegraph.api.command.ConnectCommand;
 import com.nodegraph.nodegraph.api.command.GroupNodesCommand;
 import com.nodegraph.nodegraph.api.command.RemoveGroupCommand;
 import com.nodegraph.nodegraph.api.command.RemoveNodeCommand;
 import com.nodegraph.nodegraph.api.command.SetGroupTransformCommand;
 import com.nodegraph.nodegraph.api.command.UndoManager;
+import com.nodegraph.nodegraph.api.def.NodeDefinition;
+import com.nodegraph.nodegraph.api.def.NodeDefinitionCatalog;
 import com.nodegraph.nodegraph.api.model.Connection;
 import com.nodegraph.nodegraph.api.model.ConnectResult;
 import com.nodegraph.nodegraph.api.model.Node;
@@ -15,6 +19,8 @@ import com.nodegraph.nodegraph.api.model.NodeGraph;
 import com.nodegraph.nodegraph.api.model.NodeGroup;
 import com.nodegraph.nodegraph.api.model.NodeGroupId;
 import com.nodegraph.nodegraph.api.model.NodeId;
+import com.nodegraph.nodegraph.api.model.Port;
+import com.nodegraph.nodegraph.api.type.Type;
 import com.nodegraph.nodegraph.client.interaction.GroupPick;
 import com.nodegraph.nodegraph.client.interaction.NodeInteractionController;
 import com.nodegraph.nodegraph.client.interaction.SelectionController;
@@ -36,6 +42,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * 节点图画布 Widget。可经 {@code addRenderableWidget} 嵌入任意 Screen。
@@ -87,6 +94,8 @@ public class NodeGraphWidget extends AbstractWidget {
     private ConnectionDrag pending;
     /** 右键菜单；null 表示关闭。 */
     private ContextMenu menu;
+    /** 添加节点浮层；null 表示关闭。 */
+    private AddNodeOverlay addNodeOverlay;
 
     /** 连线拖拽预览状态。 */
     public static final class ConnectionDrag {
@@ -170,6 +179,13 @@ public class NodeGraphWidget extends AbstractWidget {
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
+        if (addNodeOverlay != null && addNodeOverlay.isOpen()) {
+            addNodeOverlay.mouseClicked(mx, my);
+            if (!addNodeOverlay.isOpen()) {
+                addNodeOverlay = null;
+            }
+            return true;
+        }
         if (!clicked(mx, my)) {
             return false;
         }
@@ -413,6 +429,10 @@ public class NodeGraphWidget extends AbstractWidget {
         if (selection.nodeCount() > 1) {
             items.add(new ContextMenu.MenuItem(Component.literal("Group"), true, this::groupSelection));
         }
+        if (graph.catalog() != null && !graph.catalog().isEmpty()) {
+            items.add(new ContextMenu.MenuItem(Component.literal("Add Node..."), true,
+                    () -> openAddNodeOverlay(mx, my)));
+        }
         if (items.isEmpty()) {
             return;
         }
@@ -421,6 +441,107 @@ public class NodeGraphWidget extends AbstractWidget {
 
     public void closeMenu() {
         menu = null;
+    }
+
+    public AddNodeOverlay addNodeOverlay() {
+        return addNodeOverlay;
+    }
+
+    /** 打开添加节点浮层（无类型过滤，用于右键菜单"Add Node..."）。放置点 = 屏幕坐标对应的世界点。 */
+    public void openAddNodeOverlay(double screenX, double screenY) {
+        NodeDefinitionCatalog catalog = graph.catalog();
+        if (catalog == null || catalog.isEmpty()) {
+            return;
+        }
+        double wx = worldX(screenX);
+        double wy = worldY(screenY);
+        List<NodeDefinition> candidates = new ArrayList<>(catalog.all());
+        openAddNodeOverlayCore(screenX, screenY, candidates, def ->
+                undo.apply(new AddNodeCommand(graph, def, wx, wy)));
+    }
+
+    /**
+     * 打开添加节点浮层，按源端口类型过滤候选，选中后自动添加节点并连线（拖线到空白场景）。
+     *
+     * @param fromOutput true=从输出端口拖出（找有同类型 input 的节点并连到该 input）；
+     *                   false=从输入端口拖出（找有同类型 output 的节点，该 output 连到源 input）。
+     */
+    public void openAddNodeForConnection(double screenX, double screenY, double worldX, double worldY,
+                                         NodeId sourceNode, int sourcePort, boolean fromOutput) {
+        NodeDefinitionCatalog catalog = graph.catalog();
+        if (catalog == null) {
+            return;
+        }
+        Type t = portType(sourceNode, sourcePort, fromOutput);
+        if (t == null) {
+            return;
+        }
+        List<NodeDefinition> candidates = fromOutput ? catalog.withInputType(t) : catalog.withOutputType(t);
+        if (candidates.isEmpty()) {
+            return;
+        }
+        openAddNodeOverlayCore(screenX, screenY, candidates, def -> {
+            AddNodeCommand add = new AddNodeCommand(graph, def, worldX, worldY);
+            undo.apply(add);
+            NodeId newNode = add.node().id();
+            int matched = findPortOfType(newNode, !fromOutput, t);
+            if (matched >= 0) {
+                if (fromOutput) {
+                    undo.apply(new ConnectCommand(graph, sourceNode, sourcePort, newNode, matched));
+                } else {
+                    undo.apply(new ConnectCommand(graph, newNode, matched, sourceNode, sourcePort));
+                }
+            }
+        });
+    }
+
+    private void openAddNodeOverlayCore(double screenX, double screenY,
+                                        List<NodeDefinition> candidates, Consumer<NodeDefinition> onPick) {
+        addNodeOverlay = new AddNodeOverlay(font, (int) screenX, (int) screenY, candidates, onPick);
+    }
+
+    private Type portType(NodeId node, int portIndex, boolean output) {
+        Node n = graph.node(node);
+        if (output) {
+            if (portIndex < 0 || portIndex >= n.outputs().size()) {
+                return null;
+            }
+            return n.outputs().get(portIndex).value().type();
+        }
+        if (portIndex < 0 || portIndex >= n.inputs().size()) {
+            return null;
+        }
+        return n.inputs().get(portIndex).value().type();
+    }
+
+    private int findPortOfType(NodeId node, boolean input, Type t) {
+        Node n = graph.node(node);
+        List<Port> ports = input ? n.inputs() : n.outputs();
+        for (int i = 0; i < ports.size(); i++) {
+            if (ports.get(i).value().type().equals(t)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public boolean overlayKey(int keyCode) {
+        if (addNodeOverlay != null && addNodeOverlay.isOpen()) {
+            if (addNodeOverlay.keyPressed(keyCode)) {
+                if (!addNodeOverlay.isOpen()) {
+                    addNodeOverlay = null;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean overlayChar(char codePoint) {
+        if (addNodeOverlay != null && addNodeOverlay.isOpen()) {
+            return addNodeOverlay.charTyped(codePoint);
+        }
+        return false;
     }
 
     // ---- rendering --------------------------------------------------------
@@ -445,6 +566,9 @@ public class NodeGraphWidget extends AbstractWidget {
         }
         if (menu != null) {
             menu.render(g, font, mouseX, mouseY);
+        }
+        if (addNodeOverlay != null && addNodeOverlay.isOpen()) {
+            addNodeOverlay.render(g, mouseX, mouseY);
         }
     }
 

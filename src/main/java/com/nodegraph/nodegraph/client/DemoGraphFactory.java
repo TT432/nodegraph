@@ -2,6 +2,7 @@ package com.nodegraph.nodegraph.client;
 
 import com.nodegraph.nodegraph.api.def.InputWidgetSpec;
 import com.nodegraph.nodegraph.api.def.NodeDefinition;
+import com.nodegraph.nodegraph.api.def.NodeDefinitionCatalog;
 import com.nodegraph.nodegraph.api.def.PortSpec;
 import com.nodegraph.nodegraph.api.model.InputWidgetKind;
 import com.nodegraph.nodegraph.api.model.Node;
@@ -66,6 +67,11 @@ public final class DemoGraphFactory {
                 });
 
         NodeGraph graph = new NodeGraph(types);
+        NodeDefinitionCatalog catalog = new NodeDefinitionCatalog();
+        catalog.register(constant);
+        catalog.register(add);
+        catalog.register(toByte);
+        graph.setCatalog(catalog);
         Node a = graph.addNode(constant, 40, 40);
         a.widgets().get(0).setCurrentValue("10");
         Node b = graph.addNode(constant, 40, 160);

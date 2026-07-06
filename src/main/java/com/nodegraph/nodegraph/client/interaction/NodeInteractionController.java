@@ -183,7 +183,7 @@ public final class NodeInteractionController {
                 return true;
             }
             case DRAG_CONNECTION: {
-                tryConnect(wx, wy);
+                tryConnect(mx, my, wx, wy);
                 widget.setPending(null);
                 resetDragConnection();
                 return true;
@@ -300,7 +300,7 @@ public final class NodeInteractionController {
         pressWY = wy;
     }
 
-    private void tryConnect(double wx, double wy) {
+    private void tryConnect(double mx, double my, double wx, double wy) {
         NodeGraph graph = widget.graph();
         NodeId fromNode;
         int fromOutput;
@@ -309,6 +309,9 @@ public final class NodeInteractionController {
         if (connFromOutput) {
             Optional<PortHit> drop = pickInputPort(wx, wy);
             if (drop.isEmpty()) {
+                // 拖输出到空白：弹出"有同类型 input 的节点"添加菜单
+                widget.openAddNodeForConnection(mx, my, wx, wy,
+                        connFromLayout.node().id(), connPortIndex, true);
                 return;
             }
             fromNode = connFromLayout.node().id();
@@ -318,6 +321,9 @@ public final class NodeInteractionController {
         } else {
             Optional<PortHit> drop = pickOutputPort(wx, wy);
             if (drop.isEmpty()) {
+                // 拖输入到空白：弹出"有同类型 output 的节点"添加菜单
+                widget.openAddNodeForConnection(mx, my, wx, wy,
+                        connFromLayout.node().id(), connPortIndex, false);
                 return;
             }
             fromNode = drop.get().layout().node().id();

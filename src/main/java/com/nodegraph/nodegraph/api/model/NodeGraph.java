@@ -2,6 +2,7 @@ package com.nodegraph.nodegraph.api.model;
 
 import com.nodegraph.nodegraph.api.def.InputWidgetSpec;
 import com.nodegraph.nodegraph.api.def.NodeDefinition;
+import com.nodegraph.nodegraph.api.def.NodeDefinitionCatalog;
 import com.nodegraph.nodegraph.api.def.PortSpec;
 import com.nodegraph.nodegraph.api.type.Type;
 import com.nodegraph.nodegraph.api.type.TypeConversionRule;
@@ -30,6 +31,7 @@ public final class NodeGraph {
     private final List<Connection> connections = new ArrayList<>();
     private long nextNodeId = 1;
     private long nextGroupId = 1;
+    private NodeDefinitionCatalog catalog;
 
     public NodeGraph(TypeRegistry types) {
         this.types = Objects.requireNonNull(types, "types");
@@ -37,6 +39,15 @@ public final class NodeGraph {
 
     public TypeRegistry types() {
         return types;
+    }
+
+    /** Optional node-definition whitelist for the add-node UI; {@code null} = unrestricted. */
+    public NodeDefinitionCatalog catalog() {
+        return catalog;
+    }
+
+    public void setCatalog(NodeDefinitionCatalog catalog) {
+        this.catalog = catalog;
     }
 
     // ---------------------------------------------------------------- nodes
