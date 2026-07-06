@@ -1,8 +1,10 @@
 package com.nodegraph.nodegraph.client.widget;
 
+import com.nodegraph.nodegraph.api.model.Connection;
 import com.nodegraph.nodegraph.api.model.Node;
 import com.nodegraph.nodegraph.api.model.NodeGraph;
 import com.nodegraph.nodegraph.client.layout.NodeLayout;
+import com.nodegraph.nodegraph.client.render.ConnectionRenderer;
 import com.nodegraph.nodegraph.client.render.NodeRenderer;
 import com.nodegraph.nodegraph.client.viewport.Viewport;
 import net.minecraft.client.Minecraft;
@@ -47,6 +49,34 @@ public class NodeGraphWidget extends AbstractWidget {
     private double lastMouseX;
     private double lastMouseY;
 
+    /** 拖拽连线中的预览状态；null 时不渲染。由 TaskH 交互层设置/清空。 */
+    private ConnectionDrag pending;
+
+    /** 连线拖拽预览状态（TaskG 交付渲染能力，数据源归 TaskH）。 */
+    public static final class ConnectionDrag {
+        private final NodeLayout fromLayout;
+        private final int outIdx;
+        private final int color;
+
+        public ConnectionDrag(NodeLayout fromLayout, int outIdx, int color) {
+            this.fromLayout = fromLayout;
+            this.outIdx = outIdx;
+            this.color = color;
+        }
+
+        public NodeLayout fromLayout() {
+            return fromLayout;
+        }
+
+        public int outIdx() {
+            return outIdx;
+        }
+
+        public int color() {
+            return color;
+        }
+    }
+
     public NodeGraphWidget(int x, int y, int width, int height, NodeGraph graph) {
         super(x, y, width, height, Component.empty());
         this.graph = Objects.requireNonNull(graph, "graph");
@@ -60,6 +90,14 @@ public class NodeGraphWidget extends AbstractWidget {
 
     public Viewport viewport() {
         return viewport;
+    }
+
+    public ConnectionDrag pending() {
+        return pending;
+    }
+
+    public void setPending(ConnectionDrag pending) {
+        this.pending = pending;
     }
 
     @Override
@@ -135,11 +173,53 @@ public class NodeGraphWidget extends AbstractWidget {
         g.fill(x0, y0, x1, y1, COLOR_BG);
         g.enableScissor(x0, y0, x1, y1);
         renderGrid(g);
+        renderConnections(g);
         Optional<List<Component>> tooltip = renderNodes(g, mouseX, mouseY);
+        renderPending(g, mouseX, mouseY);
         g.disableScissor();
         if (tooltip.isPresent()) {
             g.renderComponentTooltip(font, tooltip.get(), mouseX, mouseY);
         }
+    }
+
+    /**
+     * 渲染图中所有连线（贝塞尔）。在节点之下绘制（节点端口方块盖住线端）。
+     * 自动转换连线用警告色 + 中点警告方块。
+     */
+    protected void renderConnections(GuiGraphics g) {
+        int x0 = getX();
+        int y0 = getY();
+        for (Connection c : graph.connections()) {
+            Node from = graph.node(c.fromNode());
+            Node to = graph.node(c.toNode());
+            NodeLayout fromLayout = new NodeLayout(from);
+            NodeLayout toLayout = new NodeLayout(to);
+            int color = c.isAutoConverted()
+                    ? ConnectionRenderer.WARN_COLOR
+                    : fromLayout.outputPortData(c.fromOutput()).value().type().color();
+            double[] mid = ConnectionRenderer.render(g, viewport, x0, y0,
+                    fromLayout, c.fromOutput(), toLayout, c.toInput(),
+                    color, ConnectionRenderer.HALF_THICKNESS);
+            if (c.isAutoConverted()) {
+                ConnectionRenderer.renderWarnMark(g, mid[0], mid[1]);
+            }
+        }
+    }
+
+    /**
+     * 渲染拖拽预览线（pending != null 时）。从源输出端口到当前鼠标位置。
+     */
+    protected void renderPending(GuiGraphics g, int mouseX, int mouseY) {
+        if (pending == null) {
+            return;
+        }
+        NodeLayout.PortAnchor a = pending.fromLayout().outputPort(pending.outIdx());
+        int x0 = getX();
+        int y0 = getY();
+        double toWx = viewport.screenToWorldX(mouseX, x0);
+        double toWy = viewport.screenToWorldY(mouseY, y0);
+        int color = ConnectionRenderer.withAlpha(pending.color(), ConnectionRenderer.PREVIEW_ALPHA);
+        ConnectionRenderer.renderPreview(g, viewport, x0, y0, a.x(), a.y(), toWx, toWy, color);
     }
 
     /**
