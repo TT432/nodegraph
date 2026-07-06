@@ -68,6 +68,20 @@ public class NodeGraphScreen extends Screen {
     }
 
     @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (canvas != null && canvas.handleKey(keyCode)) {
+            return true;
+        }
+        if (keyCode == 256) { // ESC: close menu first, else let super close the screen
+            if (canvas != null && canvas.menu() != null) {
+                canvas.closeMenu();
+                return true;
+            }
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         super.render(g, mouseX, mouseY, partialTick);
         if (canvas != null) {

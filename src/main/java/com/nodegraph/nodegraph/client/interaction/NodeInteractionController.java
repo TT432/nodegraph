@@ -8,6 +8,7 @@ import com.nodegraph.nodegraph.api.model.NodeGraph;
 import com.nodegraph.nodegraph.api.model.NodeId;
 import com.nodegraph.nodegraph.client.layout.NodeLayout;
 import com.nodegraph.nodegraph.client.widget.NodeGraphWidget;
+import net.minecraft.client.gui.screens.Screen;
 
 import java.util.Optional;
 
@@ -72,6 +73,11 @@ public final class NodeInteractionController {
         }
         Optional<NodeLayout> header = pickHeader(wx, wy);
         if (header.isPresent()) {
+            if (Screen.hasShiftDown()) {
+                // Shift+click header toggles membership without dragging.
+                widget.selection().toggleNode(header.get().node().id());
+                return true;
+            }
             startDragNode(header.get(), wx, wy);
             return true;
         }
@@ -111,6 +117,9 @@ public final class NodeInteractionController {
                 if (endX != grabNX || endY != grabNY) {
                     widget.undo().apply(new MoveNodeCommand(
                             widget.graph(), dragTarget, grabNX, grabNY, endX, endY));
+                } else {
+                    // pure click on header (no drag) -> single-select it
+                    widget.selectSingle(dragTarget);
                 }
                 resetDragNode();
                 return true;

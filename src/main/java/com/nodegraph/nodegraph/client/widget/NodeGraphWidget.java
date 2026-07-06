@@ -1,15 +1,24 @@
 package com.nodegraph.nodegraph.client.widget;
 
+import com.nodegraph.nodegraph.api.clipboard.Clipboard;
+import com.nodegraph.nodegraph.api.command.Command;
+import com.nodegraph.nodegraph.api.command.CompositeCommand;
+import com.nodegraph.nodegraph.api.command.GroupNodesCommand;
+import com.nodegraph.nodegraph.api.command.RemoveGroupCommand;
+import com.nodegraph.nodegraph.api.command.RemoveNodeCommand;
 import com.nodegraph.nodegraph.api.command.UndoManager;
 import com.nodegraph.nodegraph.api.model.Connection;
 import com.nodegraph.nodegraph.api.model.ConnectResult;
 import com.nodegraph.nodegraph.api.model.Node;
 import com.nodegraph.nodegraph.api.model.NodeGraph;
+import com.nodegraph.nodegraph.api.model.NodeGroupId;
 import com.nodegraph.nodegraph.api.model.NodeId;
 import com.nodegraph.nodegraph.client.interaction.NodeInteractionController;
+import com.nodegraph.nodegraph.client.interaction.SelectionController;
 import com.nodegraph.nodegraph.client.layout.NodeLayout;
 import com.nodegraph.nodegraph.client.render.ConnectionRenderer;
 import com.nodegraph.nodegraph.client.render.NodeRenderer;
+import com.nodegraph.nodegraph.client.selection.SelectionModel;
 import com.nodegraph.nodegraph.client.viewport.Viewport;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -19,6 +28,7 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -26,12 +36,20 @@ import java.util.Optional;
 /**
  * 节点图画布 Widget。可经 {@code addRenderableWidget} 嵌入任意 Screen。
  *
- * <p>持有 {@link NodeGraph}（数据，只读）与 {@link Viewport}（视口，可变）。本类负责：
- * 世界↔屏幕坐标变换的宿主、网格背景渲染、平移（中键/左键拖空白/滚轮）、缩放（Ctrl+滚轮）。
+ * <p>持有 {@link NodeGraph}（数据，只读）、{@link Viewport}（视口，可变）、
+ * {@link SelectionModel}/{@link Clipboard}/{@link UndoManager}（编辑状态）。
  *
- * <p><b>事件派发契约</b>：默认 Screen 派发链不路由 {@code button != 0} 的 mouseDragged。
- * 对左键拖、滚轮、全按钮 mouseClicked/mouseReleased，本 widget 自洽；对中键拖动，依赖宿主 Screen
- * 转发 mouseDragged(button=2) 或 mouseMoved（见 {@link NodeGraphScreen}）。
+ * <p><b>事件路由（TaskI）</b>：
+ * <ul>
+ *   <li>右键(1) → 打开 {@link ContextMenu}（菜单打开期间吞掉后续点击）。</li>
+ *   <li>左键(0) → 先委托 {@link NodeInteractionController}（节点头拖动/端口连线）；
+ *       未命中 → {@link SelectionController} 框选。</li>
+ *   <li>中键(2) → 平移画布。</li>
+ *   <li>滚轮 → 平移（Shift=横向，无修饰=纵向）/缩放（Ctrl）。</li>
+ * </ul>
+ *
+ * <p><b>派发契约</b>：默认 Screen 派发链不路由 {@code button != 0} 的 mouseDragged。
+ * 宿主 {@link NodeGraphScreen} 直接转发全按钮事件到本 widget，故中键拖动可达。
  */
 public class NodeGraphWidget extends AbstractWidget {
     public static final double GRID_SIZE = 20.0;
@@ -41,12 +59,18 @@ public class NodeGraphWidget extends AbstractWidget {
     public static final int COLOR_BG = 0xFF1A1A1A;
     public static final int COLOR_GRID = 0xFF2B2B2B;
     public static final int COLOR_AXIS = 0xFF444444;
+    public static final int SELECTED_COLOR = 0xFFFFFF00;
+    public static final int BOX_FILL = 0x40FFFFFF;
+    public static final int BOX_OUTLINE = 0xFFAAAAAA;
 
     private final NodeGraph graph;
     private final Viewport viewport;
     private final Font font;
     private final UndoManager undo;
     private final NodeInteractionController controller;
+    private final Clipboard clipboard;
+    private final SelectionModel selection;
+    private final SelectionController selectionController;
 
     private enum State { IDLE, PANNING }
 
@@ -55,10 +79,12 @@ public class NodeGraphWidget extends AbstractWidget {
     private double lastMouseX;
     private double lastMouseY;
 
-    /** 拖拽连线中的预览状态；null 时不渲染。由 TaskH 交互层设置/清空。 */
+    /** 拖拽连线中的预览状态；null 时不渲染。 */
     private ConnectionDrag pending;
+    /** 右键菜单；null 表示关闭。 */
+    private ContextMenu menu;
 
-    /** 连线拖拽预览状态（TaskG 交付渲染能力，数据源归 TaskH）。 */
+    /** 连线拖拽预览状态。 */
     public static final class ConnectionDrag {
         private final NodeLayout fromLayout;
         private final int portIndex;
@@ -96,6 +122,9 @@ public class NodeGraphWidget extends AbstractWidget {
         this.viewport = new Viewport();
         this.font = Minecraft.getInstance().font;
         this.controller = new NodeInteractionController(this);
+        this.clipboard = new Clipboard();
+        this.selection = new SelectionModel();
+        this.selectionController = new SelectionController(this);
     }
 
     public NodeGraph graph() {
@@ -110,6 +139,14 @@ public class NodeGraphWidget extends AbstractWidget {
         return undo;
     }
 
+    public Clipboard clipboard() {
+        return clipboard;
+    }
+
+    public SelectionModel selection() {
+        return selection;
+    }
+
     public ConnectionDrag pending() {
         return pending;
     }
@@ -118,30 +155,60 @@ public class NodeGraphWidget extends AbstractWidget {
         this.pending = pending;
     }
 
+    public ContextMenu menu() {
+        return menu;
+    }
+
     @Override
     public boolean isValidClickButton(int button) {
-        return button == 0 || button == 2;
+        return button == 0 || button == 1 || button == 2;
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
-        if (!isValidClickButton(button) || !clicked(mx, my)) {
+        if (!clicked(mx, my)) {
             return false;
         }
-        if (button == 0 && controller.onMouseClicked(mx, my, button)) {
+        // menu open: any click is consumed by the menu (close after handling)
+        if (menu != null) {
+            if (menu.contains(font, (int) mx, (int) my)) {
+                menu.click(font, (int) mx, (int) my);
+            }
+            closeMenu();
             return true;
         }
-        state = State.PANNING;
-        panButton = button;
-        lastMouseX = mx;
-        lastMouseY = my;
-        return true;
+        if (button == 1) {
+            openMenu(mx, my);
+            return true;
+        }
+        if (button == 0) {
+            if (controller.onMouseClicked(mx, my, button)) {
+                return true;
+            }
+            // empty canvas -> start box select
+            selectionController.start(worldX(mx), worldY(my));
+            return true;
+        }
+        if (button == 2) {
+            state = State.PANNING;
+            panButton = button;
+            lastMouseX = mx;
+            lastMouseY = my;
+            return true;
+        }
+        return false;
     }
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
-        if (button == 0 && controller.onMouseReleased(mx, my, button)) {
-            return true;
+        if (button == 0) {
+            if (controller.onMouseReleased(mx, my, button)) {
+                return true;
+            }
+            if (selectionController.isSelecting()) {
+                selectionController.finish(Screen.hasShiftDown());
+                return true;
+            }
         }
         if (state == State.PANNING && button == panButton) {
             state = State.IDLE;
@@ -153,8 +220,18 @@ public class NodeGraphWidget extends AbstractWidget {
 
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dragX, double dragY) {
-        if (button == 0 && controller.onMouseDragged(mx, my, button)) {
-            return true;
+        if (menu != null) {
+            return false;
+        }
+        if (button == 0) {
+            if (controller.onMouseDragged(mx, my, button)) {
+                return true;
+            }
+            if (selectionController.isSelecting()) {
+                selectionController.drag(worldX(mx), worldY(my));
+                return true;
+            }
+            return false;
         }
         if (state == State.PANNING && button == panButton) {
             viewport.pan(mx - lastMouseX, my - lastMouseY);
@@ -191,6 +268,137 @@ public class NodeGraphWidget extends AbstractWidget {
         return true;
     }
 
+    // ---- selection / clipboard actions (shared by menu + keyboard) --------
+
+    public void copy() {
+        if (selection.isEmpty()) {
+            return;
+        }
+        clipboard.copy(graph, selection.nodes(), selection.groups());
+    }
+
+    public void cut() {
+        if (selection.isEmpty()) {
+            return;
+        }
+        clipboard.cut(graph, selection.nodes(), selection.groups(), undo);
+        selection.clear();
+    }
+
+    public void paste() {
+        if (!clipboard.hasContent()) {
+            return;
+        }
+        double ox = viewport.panX() + 16;
+        double oy = viewport.panY() + 16;
+        clipboard.paste(graph, undo, ox, oy);
+    }
+
+    public void delete() {
+        if (selection.isEmpty()) {
+            return;
+        }
+        List<Command> children = new ArrayList<>();
+        for (NodeGroupId gid : selection.groups()) {
+            children.add(new RemoveGroupCommand(graph, gid));
+        }
+        for (NodeId nid : selection.nodes()) {
+            children.add(new RemoveNodeCommand(graph, nid));
+        }
+        undo.apply(new CompositeCommand("Delete", children));
+        selection.clear();
+    }
+
+    public void groupSelection() {
+        List<NodeId> nodes = selection.nodes();
+        if (nodes.size() <= 1) {
+            return;
+        }
+        double minX = Double.POSITIVE_INFINITY;
+        double minY = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double maxY = Double.NEGATIVE_INFINITY;
+        for (NodeId nid : nodes) {
+            NodeLayout l = new NodeLayout(graph.node(nid));
+            NodeLayout.Rect b = l.bounds();
+            minX = Math.min(minX, b.x());
+            minY = Math.min(minY, b.y());
+            maxX = Math.max(maxX, b.x() + b.w());
+            maxY = Math.max(maxY, b.y() + b.h());
+        }
+        undo.apply(new GroupNodesCommand(graph, Component.literal("Group"),
+                minX, minY, maxX - minX, maxY - minY, nodes));
+        selection.clear();
+    }
+
+    public void selectSingle(NodeId id) {
+        selection.clear();
+        selection.addNode(id);
+    }
+
+    public void clearSelection() {
+        selection.clear();
+    }
+
+    /**
+     * Handle a keyboard shortcut. Returns true if consumed. Key codes are raw
+     * GLFW values (67=C, 86=V, 88=X, 90=Z, 261=Delete), matching MC 1.20.1
+     * {@code Screen} internals.
+     */
+    public boolean handleKey(int keyCode) {
+        boolean ctrl = Screen.hasControlDown();
+        boolean shift = Screen.hasShiftDown();
+        if (ctrl && keyCode == 67) { copy(); return true; }       // C
+        if (ctrl && keyCode == 88) { cut(); return true; }        // X
+        if (ctrl && keyCode == 86) { paste(); return true; }      // V
+        if (keyCode == 261) { delete(); return true; }            // Delete
+        if (ctrl && keyCode == 90) {                              // Z
+            if (shift) { undo.redo(); } else { undo.undo(); }
+            return true;
+        }
+        return false;
+    }
+
+    public void openMenu(double mx, double my) {
+        double wx = worldX(mx);
+        double wy = worldY(my);
+        // ensure the right-clicked node is part of the selection
+        NodeId hit = null;
+        for (Node n : graph.nodes()) {
+            if (new NodeLayout(n).bounds().contains(wx, wy)) {
+                hit = n.id();
+                break;
+            }
+        }
+        if (hit != null && !selection.containsNode(hit)) {
+            selectSingle(hit);
+        }
+        List<ContextMenu.MenuItem> items = new ArrayList<>();
+        if (!selection.isEmpty()) {
+            items.add(new ContextMenu.MenuItem(Component.literal("Copy"), true, this::copy));
+            items.add(new ContextMenu.MenuItem(Component.literal("Cut"), true, this::cut));
+        }
+        if (clipboard.hasContent()) {
+            items.add(new ContextMenu.MenuItem(Component.literal("Paste"), true, this::paste));
+        }
+        if (!selection.isEmpty()) {
+            items.add(new ContextMenu.MenuItem(Component.literal("Delete"), true, this::delete));
+        }
+        if (selection.nodeCount() > 1) {
+            items.add(new ContextMenu.MenuItem(Component.literal("Group"), true, this::groupSelection));
+        }
+        if (items.isEmpty()) {
+            return;
+        }
+        menu = new ContextMenu((int) mx, (int) my, items);
+    }
+
+    public void closeMenu() {
+        menu = null;
+    }
+
+    // ---- rendering --------------------------------------------------------
+
     @Override
     protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         int x0 = getX();
@@ -202,17 +410,17 @@ public class NodeGraphWidget extends AbstractWidget {
         renderGrid(g);
         renderConnections(g);
         Optional<List<Component>> tooltip = renderNodes(g, mouseX, mouseY);
+        renderSelectionBox(g);
         renderPending(g, mouseX, mouseY);
         g.disableScissor();
         if (tooltip.isPresent()) {
             g.renderComponentTooltip(font, tooltip.get(), mouseX, mouseY);
         }
+        if (menu != null) {
+            menu.render(g, font, mouseX, mouseY);
+        }
     }
 
-    /**
-     * 渲染图中所有连线（贝塞尔）。在节点之下绘制（节点端口方块盖住线端）。
-     * 自动转换连线用警告色 + 中点警告方块。
-     */
     protected void renderConnections(GuiGraphics g) {
         int x0 = getX();
         int y0 = getY();
@@ -233,10 +441,6 @@ public class NodeGraphWidget extends AbstractWidget {
         }
     }
 
-    /**
-     * 渲染拖拽预览线（pending != null 时）。从源端口到当前鼠标位置。
-     * 预览色据落点类型校验变化：未命中→半透明类型色；兼容→满 alpha 类型色；不兼容→半透明红。
-     */
     protected void renderPending(GuiGraphics g, int mouseX, int mouseY) {
         if (pending == null) {
             return;
@@ -304,9 +508,6 @@ public class NodeGraphWidget extends AbstractWidget {
 
     private record DropTarget(NodeId nodeId, int index) {}
 
-    /**
-     * 渲染图中所有（可见）节点。返回首个命中鼠标的端口/组件 tooltip 行，供调用方在 scissor 外绘制。
-     */
     protected Optional<List<Component>> renderNodes(GuiGraphics g, int mouseX, int mouseY) {
         int x0 = getX();
         int y0 = getY();
@@ -327,6 +528,13 @@ public class NodeGraphWidget extends AbstractWidget {
             double wy = viewport.screenToWorldY(mouseY, y0);
             boolean hovered = layout.bounds().contains(wx, wy);
             NodeRenderer.render(g, font, layout, viewport, x0, y0, hovered);
+            if (selection.containsNode(node.id())) {
+                int ix = (int) Math.floor(sx);
+                int iy = (int) Math.floor(sy);
+                int iw = (int) Math.round(sw);
+                int ih = (int) Math.round(sh);
+                g.renderOutline(ix - 1, iy - 1, iw + 2, ih + 2, SELECTED_COLOR);
+            }
             if (firstHit.isEmpty()) {
                 firstHit = NodeRenderer.pickHover(layout, viewport, x0, y0, mouseX, mouseY);
             }
@@ -334,9 +542,28 @@ public class NodeGraphWidget extends AbstractWidget {
         return firstHit;
     }
 
-    /**
-     * 在世界坐标系中绘制网格（间距 {@link #GRID_SIZE}）。仅画视口可见范围。原点轴（i==0/j==0）用稍亮色。
-     */
+    /** Render the in-progress box-select rectangle (screen space). */
+    protected void renderSelectionBox(GuiGraphics g) {
+        if (!selectionController.isSelecting()) {
+            return;
+        }
+        double minX = selectionController.minWX();
+        double minY = selectionController.minWY();
+        double maxX = selectionController.maxWX();
+        double maxY = selectionController.maxWY();
+        if (minX == maxX || minY == maxY) {
+            return;
+        }
+        int x0 = getX();
+        int y0 = getY();
+        int sMinX = (int) Math.floor(viewport.worldToScreenX(minX, x0));
+        int sMinY = (int) Math.floor(viewport.worldToScreenY(minY, y0));
+        int sMaxX = (int) Math.ceil(viewport.worldToScreenX(maxX, x0));
+        int sMaxY = (int) Math.ceil(viewport.worldToScreenY(maxY, y0));
+        g.fill(sMinX, sMinY, sMaxX, sMaxY, BOX_FILL);
+        g.renderOutline(sMinX, sMinY, sMaxX - sMinX, sMaxY - sMinY, BOX_OUTLINE);
+    }
+
     protected void renderGrid(GuiGraphics g) {
         int x0 = getX();
         int y0 = getY();
@@ -364,6 +591,14 @@ public class NodeGraphWidget extends AbstractWidget {
             int color = (j == 0) ? COLOR_AXIS : COLOR_GRID;
             g.fill(x0, sy, x1, sy + 1, color);
         }
+    }
+
+    private double worldX(double mx) {
+        return viewport.screenToWorldX(mx, getX());
+    }
+
+    private double worldY(double my) {
+        return viewport.screenToWorldY(my, getY());
     }
 
     @Override
