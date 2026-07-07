@@ -29,6 +29,7 @@ public final class NodeGraph {
     private final Map<NodeId, Node> nodes = new LinkedHashMap<>();
     private final Map<NodeGroupId, NodeGroup> groups = new LinkedHashMap<>();
     private final List<Connection> connections = new ArrayList<>();
+    private final List<ConnectionListener> connectionListeners = new ArrayList<>();
     private long nextNodeId = 1;
     private long nextGroupId = 1;
     private NodeDefinitionCatalog catalog;
@@ -102,8 +103,18 @@ public final class NodeGraph {
         if (node == null) {
             throw new IllegalArgumentException("Unknown node: " + id);
         }
-        // Drop every connection that references this node.
-        connections.removeIf(c -> c.fromNode().equals(id) || c.toNode().equals(id));
+        // Drop every connection that references this node. Collect first so
+        // each removal can be announced to listeners (removeIf cannot).
+        List<Connection> victims = new ArrayList<>();
+        for (Connection c : connections) {
+            if (c.fromNode().equals(id) || c.toNode().equals(id)) {
+                victims.add(c);
+            }
+        }
+        for (Connection c : victims) {
+            connections.remove(c);
+            fireConnectionEvent(ConnectionEvent.Kind.REMOVED, c);
+        }
     }
 
     public Node node(NodeId id) {
@@ -231,7 +242,9 @@ public final class NodeGraph {
             throw new IllegalArgumentException("Incompatible connection: "
                     + outputType(fromNode, fromOutput) + " -> " + inputType(toNode, toInput));
         }
-        // Replace existing single-source connection on this input.
+        // Replace existing single-source connection on this input. The
+        // delegate call to disconnect(Connection) also fires REMOVED so the
+        // replacement is observed as REMOVED(old) then CREATED(new).
         Optional<Connection> existing = inputConnection(toNode, toInput);
         existing.ifPresent(this::disconnect);
 
@@ -241,11 +254,15 @@ public final class NodeGraph {
                 : null;
         Connection c = new Connection(fromNode, fromOutput, toNode, toInput, auto, rule);
         connections.add(c);
+        fireConnectionEvent(ConnectionEvent.Kind.CREATED, c);
         return c;
     }
 
     public void disconnect(Connection c) {
-        connections.remove(c);
+        boolean removed = connections.remove(c);
+        if (removed) {
+            fireConnectionEvent(ConnectionEvent.Kind.REMOVED, c);
+        }
     }
 
     /**
@@ -279,6 +296,7 @@ public final class NodeGraph {
         // Avoid duplicate if the exact connection is already present.
         if (!connections.contains(c)) {
             connections.add(c);
+            fireConnectionEvent(ConnectionEvent.Kind.CREATED, c);
         }
     }
 
@@ -305,5 +323,46 @@ public final class NodeGraph {
             }
         }
         return result;
+    }
+
+    // ------------------------------------------------------ event listeners
+
+    /**
+     * Register a {@link ConnectionListener} to be notified after every
+     * connection creation / removal. Listeners are invoked synchronously on
+     * the thread that performed the mutation; deregister via
+     * {@link #removeConnectionListener}.
+     *
+     * @throws NullPointerException if {@code listener} is null.
+     */
+    public void addConnectionListener(ConnectionListener listener) {
+        Objects.requireNonNull(listener, "listener");
+        connectionListeners.add(listener);
+    }
+
+    public void removeConnectionListener(ConnectionListener listener) {
+        connectionListeners.remove(listener);
+    }
+
+    /**
+     * Dispatch an event to every registered listener. Structural changes to
+     * the listener list made by a callback (add/remove) do not affect the
+     * current dispatch pass — iteration runs over a snapshot. A throwing
+     * listener is logged and skipped so one bad listener cannot starve the
+     * others or corrupt the already-applied graph state.
+     */
+    private void fireConnectionEvent(ConnectionEvent.Kind kind, Connection connection) {
+        if (connectionListeners.isEmpty()) {
+            return;
+        }
+        ConnectionEvent event = new ConnectionEvent(kind, connection);
+        for (ConnectionListener l : new ArrayList<>(connectionListeners)) {
+            try {
+                l.onConnectionEvent(event);
+            } catch (RuntimeException ex) {
+                System.err.println("[NodeGraph] ConnectionListener threw: " + ex);
+                ex.printStackTrace(System.err);
+            }
+        }
     }
 }
