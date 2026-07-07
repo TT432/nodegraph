@@ -5,6 +5,7 @@ plugins {
     id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
     id 'idea'
     id 'net.neoforged.moddev.legacyforge' version '2.0.141'
+    id 'net.darkhax.curseforgegradle' version '1.1.15'
 }
 
 tasks.named('wrapper', Wrapper).configure {
@@ -260,4 +261,27 @@ idea {
         downloadSources = true
         downloadJavadoc = true
     }
+}
+
+// ---- CurseForge 发布 (CurseForgeGradle) ----
+// 用 CurseForgeGradle 而非已归档的 CurseGradle(matthewprenger, 1.4.0/2019)：后者不兼容 Gradle 9。
+// 运行：./gradlew publishCurseForge
+// 鉴权：CURSE_TOKEN 存于 ~/.gradle/gradle.properties。
+// disableVersionDetection：legacyforge 依赖 net.neoforged.moddev，自动检测会误标 NeoForge，故手动指定。
+tasks.register('publishCurseForge', net.darkhax.curseforgegradle.TaskPublishCurseForge) {
+    dependsOn 'jar'
+    // CurseForgeGradle 1.1.15 持有 Project 引用，与 Gradle configuration-cache 不兼容。
+    notCompatibleWithConfigurationCache('CurseForgeGradle 1.1.15 is not configuration-cache compatible')
+    apiToken = findProperty('CURSE_TOKEN')
+
+    def mainFile = upload('1601245', tasks.named('jar').get())
+    mainFile.changelog = file('CHANGELOG_CF.md')
+    mainFile.changelogType = 'markdown'
+    mainFile.releaseType = 'release'
+    // disableVersionDetection 是任务级方法（对本次上传的所有文件禁用自动检测），
+    // legacyforge 依赖 net.neoforged.moddev，自动检测会误标 NeoForge，故手动指定。
+    disableVersionDetection()
+    mainFile.addGameVersion minecraft_version
+    mainFile.addModLoader 'Forge'
+    mainFile.addJavaVersion 'Java 17'
 }

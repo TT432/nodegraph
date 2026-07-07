@@ -26,7 +26,7 @@ repositories {
 }
 
 dependencies {
-    implementation fg.deobf('io.github.tt432:nodegraph:1.0.0')
+    implementation fg.deobf('io.github.tt432:nodegraph:1.1.0')
 }
 ```
 
