@@ -1,19 +1,10 @@
-# NodeGraph 1.1.0
+# NodeGraph 1.1.1
 
-## Added
+## Fixed
 
-- **Connection lifecycle events & notification mechanism**: `NodeGraph` now fires
-  fine-grained `ConnectionEvent`s (`CREATED` / `REMOVED`) with an observable
-  `ConnectionListener` API. Covers all mutation paths including the replace
-  semantics of `connect` (REMOVED old → CREATED new) and the cascade removal in
-  `removeNode`.
-  - `api/model/ConnectionEvent.java`
-  - `api/model/ConnectionListener.java`
-  - `NodeGraph#addConnectionListener / removeConnectionListener`
-
-## Changed
-
-- Bump version to 1.1.0.
+- **CurseForge 发布的 jar 现已正确 reobf**：1.1.0 的 CurseForge 件误传了未 reobf
+  的 dev jar（`jar` 任务产物），游戏无法直接加载。本次修正发布流程，改用 `reobfJar`
+  产物（运行时可加载 jar）。Maven Central 上的件是编译期库形态，不受影响。
 
 ---
 
