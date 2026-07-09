@@ -275,12 +275,15 @@ idea {
 // disableVersionDetection：legacyforge 依赖 net.neoforged.moddev，自动检测会误标 NeoForge，故手动指定
 //   game/modloader/java/environment。environment 为 CurseForge 2026-07-15 起的强制要求。
 tasks.register('publishCurseForge', net.darkhax.curseforgegradle.TaskPublishCurseForge) {
-    dependsOn 'jar'
+    // 上传 reobfJar 产物（build/libs/*.jar，reobf 后的运行时可加载 jar）。
+    // jar 任务只产出 dev jar（build/devlibs/），游戏无法直接加载；
+    // CurseForge 面向玩家直接放入 mods 文件夹，必须用 reobf 后产物。
+    dependsOn 'reobfJar'
     // CurseForgeGradle 持有 Project 引用，与 Gradle configuration-cache 不兼容。
     notCompatibleWithConfigurationCache('CurseForgeGradle is not configuration-cache compatible')
     apiToken = findProperty('CURSE_TOKEN')
 
-    def mainFile = upload('1601245', tasks.named('jar').get())
+    def mainFile = upload('1601245', tasks.named('reobfJar').get())
     mainFile.changelog = file('CHANGELOG_CF.md')
     mainFile.changelogType = 'markdown'
     mainFile.releaseType = 'release'
