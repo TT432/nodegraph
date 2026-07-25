@@ -117,12 +117,26 @@ public final class NodeGraph {
         }
     }
 
+    /**
+     * Look up a node by id.
+     *
+     * @throws IllegalArgumentException if no node with the given id exists.
+     * @see #findNode(NodeId)
+     */
     public Node node(NodeId id) {
         Node n = nodes.get(id);
         if (n == null) {
             throw new IllegalArgumentException("Unknown node: " + id);
         }
         return n;
+    }
+
+    /**
+     * Non-throwing variant of {@link #node(NodeId)}: returns the node with the
+     * given id, or {@link Optional#empty()} if no such node exists.
+     */
+    public Optional<Node> findNode(NodeId id) {
+        return Optional.ofNullable(nodes.get(id));
     }
 
     public Collection<Node> nodes() {
@@ -172,12 +186,26 @@ public final class NodeGraph {
         }
     }
 
+    /**
+     * Look up a group by id.
+     *
+     * @throws IllegalArgumentException if no group with the given id exists.
+     * @see #findGroup(NodeGroupId)
+     */
     public NodeGroup group(NodeGroupId id) {
         NodeGroup g = groups.get(id);
         if (g == null) {
             throw new IllegalArgumentException("Unknown group: " + id);
         }
         return g;
+    }
+
+    /**
+     * Non-throwing variant of {@link #group(NodeGroupId)}: returns the group
+     * with the given id, or {@link Optional#empty()} if no such group exists.
+     */
+    public Optional<NodeGroup> findGroup(NodeGroupId id) {
+        return Optional.ofNullable(groups.get(id));
     }
 
     public Collection<NodeGroup> groups() {

@@ -202,11 +202,12 @@ public final class NodeInteractionController {
                 double newH = Math.max(MIN_GROUP_H, resizeOrigH + dy);
                 if (newW != resizeOrigW || newH != resizeOrigH) {
                     NodeGraph graph = widget.graph();
-                    graph.group(resizeTarget); // existence check
+                    NodeGroup resized = graph.findGroup(resizeTarget)
+                            .orElseThrow(() -> new IllegalArgumentException("Unknown group: " + resizeTarget));
                     widget.undo().apply(new SetGroupTransformCommand(
                             graph, resizeTarget,
                             resizeOrigX, resizeOrigY, newW, newH,
-                            graph.group(resizeTarget).scale()));
+                            resized.scale()));
                 }
                 resetDragResize();
                 return true;
