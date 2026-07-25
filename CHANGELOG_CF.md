@@ -1,3 +1,13 @@
+# NodeGraph 1.1.2
+
+## Added
+
+- **Non-throwing findNode/findGroup lookups**: `NodeGraph.findNode`, `NodeGraph.findGroup`
+  now return `null` instead of throwing `IllegalArgumentException` when the key is
+  not found, matching the pre-1.1.0 API contract.
+
+---
+
 # NodeGraph 1.1.1
 
 ## Fixed
