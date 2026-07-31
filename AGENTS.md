@@ -18,6 +18,8 @@
 - `+{mc_version}-{loader}` 为 build metadata：只标识构建目标平台，不表达新旧。
 - 不同后缀 jar 不可互换（面向不同 MC/loader 编译，如 26.1 的 `Identifier`/`GuiGraphicsExtractor`）。
 - 三个变体同批发布：Maven Central 每个 node 各发一个带后缀版本；CurseForge 每变体一个文件。
+- legacyforge 节点额外发 `dev` classifier：mojmap 字节码 + 无 mods.toml，供 ModDevGradle dev runtime
+  消费（主产物是 SRG reobf jar，dev runtime 直接用会 NoSuchMethodError 且会被误识别为 mod）。
 
 ## Maven Central 发布
 

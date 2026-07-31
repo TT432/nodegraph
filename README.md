@@ -27,8 +27,10 @@ repositories {
 }
 
 dependencies {
-    // Forge 1.20.1
-    implementation fg.deobf('io.github.tt432:nodegraph:1.2.0+1.20.1-forge')
+    // Forge 1.20.1 dev 环境（ModDevGradle dev runtime 为 mojmap）：用 dev classifier
+    // （主产物是 SRG reobf jar，仅供生产 runtime；dev classifier 无 mods.toml，不会被误识别为 mod）
+    implementation 'io.github.tt432:nodegraph:1.2.0+1.20.1-forge:dev'
+    // Forge 1.20.1 生产 runtime：用主产物（SRG）
     // NeoForge 1.21.1
     implementation 'io.github.tt432:nodegraph:1.2.0+1.21.1-neoforge'
     // NeoForge 26.1.2

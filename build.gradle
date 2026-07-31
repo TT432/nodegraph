@@ -219,6 +219,16 @@ signing {
     sign publishing.publications
 }
 
+// dev classifier jar（仅 legacyforge 需要）：mavenJava 主产物被 ModDevGradle reobfuscate 替换为 SRG jar
+// （面向生产 runtime/CurseForge）；但 MDG dev runtime 是 mojmap，消费方 dev 环境直接用主产物会
+// NoSuchMethodError（SRG 名）。dev jar = mojmap 字节码，保留 mods.toml——消费方经 localRuntime
+// 注册进 FML mod discovery，类才进入 FML 模块层对 mod 代码可见（dev 的 TransformingClassLoader
+// 看不到裸 -classpath 上的 jar）。
+def devJar = tasks.register('devJar', Jar) {
+    archiveClassifier = 'dev'
+    from sourceSets.main.output
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) {
@@ -226,6 +236,9 @@ publishing {
             // 否则发布坐标变成 io.github.tt432:<版本号>:...，消费方无法按 nodegraph 名称解析。
             artifactId = mod_id
             from components.java
+            if (isLegacyForge) {
+                artifact devJar
+            }
             pom {
                 name = mod_name
                 description = mod_description
