@@ -9,7 +9,11 @@ import io.github.tt432.nodegraph.api.model.NodeGroupId;
 import io.github.tt432.nodegraph.api.model.NodeId;
 import io.github.tt432.nodegraph.api.model.NodeGroup;
 import io.github.tt432.nodegraph.api.type.TypeConversionRule;
+//? if !modern {
 import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -69,7 +73,7 @@ public final class PasteCommand implements Command {
 
     private void firstExecute() {
         // Validate all definition references up front (fail-fast, no half paste).
-        Map<ResourceLocation, NodeDefinition> defs = snapshot.definitions();
+        Map</*? if !modern {*/ ResourceLocation /*?} else {*/ Identifier /*?}*/, NodeDefinition> defs = snapshot.definitions();
         for (NodeSnapshot ns : snapshot.nodes()) {
             if (!defs.containsKey(ns.defId())) {
                 throw new IllegalArgumentException("Unknown definition in snapshot: " + ns.defId());

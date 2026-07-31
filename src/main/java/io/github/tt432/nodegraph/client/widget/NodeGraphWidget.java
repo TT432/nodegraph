@@ -37,11 +37,21 @@ import io.github.tt432.nodegraph.client.selection.SelectionModel;
 import io.github.tt432.nodegraph.client.viewport.Viewport;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
+//? if !modern {
 import net.minecraft.client.gui.GuiGraphics;
+//?} else {
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
+//?}
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+//? if !modern {
 import net.minecraft.client.gui.screens.Screen;
+//?}
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -184,12 +194,38 @@ public class NodeGraphWidget extends AbstractWidget {
         return menu;
     }
 
+    private static boolean ctrlDown() {
+        //? if !modern {
+        return Screen.hasControlDown();
+        //?} else {
+        return Minecraft.getInstance().hasControlDown();
+        //?}
+    }
+
+    private static boolean shiftDown() {
+        //? if !modern {
+        return Screen.hasShiftDown();
+        //?} else {
+        return Minecraft.getInstance().hasShiftDown();
+        //?}
+    }
+
+    //? if !modern {
     @Override
     public boolean isValidClickButton(int button) {
         return button == 0 || button == 1 || button == 2;
     }
-
+    //?} else {
     @Override
+    protected boolean isValidClickButton(MouseButtonInfo buttonInfo) {
+        int button = buttonInfo.button();
+        return button == 0 || button == 1 || button == 2;
+    }
+    //?}
+
+    //? if !modern {
+    @Override
+    //?}
     public boolean mouseClicked(double mx, double my, int button) {
         if (addNodeOverlay != null && addNodeOverlay.isOpen()) {
             addNodeOverlay.mouseClicked(mx, my);
@@ -202,12 +238,16 @@ public class NodeGraphWidget extends AbstractWidget {
             boolean inBox = mx >= activeEdit.getX() && mx <= activeEdit.getX() + activeEdit.getWidth()
                     && my >= activeEdit.getY() && my <= activeEdit.getY() + activeEdit.getHeight();
             if (inBox && button == 0) {
+                //? if !modern {
                 activeEdit.mouseClicked(mx, my, button);
+                //?} else {
+                activeEdit.mouseClicked(new MouseButtonEvent(mx, my, new MouseButtonInfo(button, 0)), false);
+                //?}
                 return true;
             }
             confirmEdit();
         }
-        if (!clicked(mx, my)) {
+        if (!isMouseOver(mx, my)) {
             return false;
         }
         // menu open: any click is consumed by the menu (close after handling)
@@ -245,14 +285,16 @@ public class NodeGraphWidget extends AbstractWidget {
         return false;
     }
 
+    //? if !modern {
     @Override
+    //?}
     public boolean mouseReleased(double mx, double my, int button) {
         if (button == 0) {
             if (controller.onMouseReleased(mx, my, button)) {
                 return true;
             }
             if (selectionController.isSelecting()) {
-                selectionController.finish(Screen.hasShiftDown());
+                selectionController.finish(shiftDown());
                 return true;
             }
         }
@@ -264,7 +306,9 @@ public class NodeGraphWidget extends AbstractWidget {
         return false;
     }
 
+    //? if !modern {
     @Override
+    //?}
     public boolean mouseDragged(double mx, double my, int button, double dragX, double dragY) {
         if (menu != null) {
             return false;
@@ -297,13 +341,29 @@ public class NodeGraphWidget extends AbstractWidget {
         }
     }
 
+    //? if legacy {
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
-        if (!clicked(mx, my)) {
+        return onScroll(mx, my, delta);
+    }
+    //?} else if !modern {
+    @Override
+    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+        return onScroll(mx, my, scrollY);
+    }
+    //?} else {
+    // 26.1 由宿主 Screen 转发原始坐标（见 NodeGraphScreen），无需覆盖事件签名。
+    public boolean mouseScrolled(double mx, double my, double delta) {
+        return onScroll(mx, my, delta);
+    }
+    //?}
+
+    private boolean onScroll(double mx, double my, double delta) {
+        if (!isMouseOver(mx, my)) {
             return false;
         }
         double s = viewport.scale();
-        if (Screen.hasControlDown()) {
+        if (ctrlDown()) {
             Optional<NodeGroupId> gh = GroupPick.findGroupHeader(graph, worldX(mx), worldY(my));
             if (gh.isPresent()) {
                 adjustGroupScale(gh.get(), delta);
@@ -311,7 +371,7 @@ public class NodeGraphWidget extends AbstractWidget {
             }
             double factor = Math.pow(ZOOM_FACTOR, delta);
             viewport.zoom(factor, mx, my, getX(), getY());
-        } else if (Screen.hasShiftDown()) {
+        } else if (shiftDown()) {
             viewport.pan(delta * SCROLL_SPEED * s, 0);
         } else {
             viewport.pan(0, delta * SCROLL_SPEED * s);
@@ -414,8 +474,8 @@ public class NodeGraphWidget extends AbstractWidget {
      * {@code Screen} internals.
      */
     public boolean handleKey(int keyCode) {
-        boolean ctrl = Screen.hasControlDown();
-        boolean shift = Screen.hasShiftDown();
+        boolean ctrl = ctrlDown();
+        boolean shift = shiftDown();
         if (ctrl && keyCode == 67) { copy(); return true; }       // C
         if (ctrl && keyCode == 88) { cut(); return true; }        // X
         if (ctrl && keyCode == 86) { paste(); return true; }      // V
@@ -584,7 +644,11 @@ public class NodeGraphWidget extends AbstractWidget {
             confirmEdit();
             return true;
         }
+        //? if !modern {
         activeEdit.keyPressed(keyCode, 0, 0);
+        //?} else {
+        activeEdit.keyPressed(new KeyEvent(keyCode, 0, 0));
+        //?}
         return true;
     }
 
@@ -592,7 +656,11 @@ public class NodeGraphWidget extends AbstractWidget {
         if (activeEdit == null) {
             return false;
         }
+        //? if !modern {
         activeEdit.charTyped(codePoint, 0);
+        //?} else {
+        activeEdit.charTyped(new CharacterEvent(codePoint));
+        //?}
         return true;
     }
 
@@ -655,8 +723,13 @@ public class NodeGraphWidget extends AbstractWidget {
 
     // ---- rendering --------------------------------------------------------
 
+    //? if !modern {
     @Override
     protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    //?} else {
+    @Override
+    protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
+    //?}
         int x0 = getX();
         int y0 = getY();
         int x1 = x0 + width;
@@ -677,7 +750,11 @@ public class NodeGraphWidget extends AbstractWidget {
         renderPending(g, mouseX, mouseY);
         g.disableScissor();
         if (tooltip.isPresent()) {
+            //? if !modern {
             g.renderComponentTooltip(font, tooltip.get(), mouseX, mouseY);
+            //?} else {
+            g.setComponentTooltipForNextFrame(font, tooltip.get(), mouseX, mouseY);
+            //?}
         }
         if (menu != null) {
             menu.render(g, font, mouseX, mouseY);
@@ -686,11 +763,15 @@ public class NodeGraphWidget extends AbstractWidget {
             addNodeOverlay.render(g, mouseX, mouseY);
         }
         if (activeEdit != null) {
+            //? if !modern {
             activeEdit.render(g, mouseX, mouseY, partialTick);
+            //?} else {
+            activeEdit.extractRenderState(g, mouseX, mouseY, partialTick);
+            //?}
         }
     }
 
-    protected void renderGroups(GuiGraphics g) {
+    protected void renderGroups(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g) {
         int x0 = getX();
         int y0 = getY();
         for (NodeGroup grp : graph.groups()) {
@@ -699,7 +780,7 @@ public class NodeGraphWidget extends AbstractWidget {
         }
     }
 
-    protected void renderConnections(GuiGraphics g) {
+    protected void renderConnections(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g) {
         int x0 = getX();
         int y0 = getY();
         for (Connection c : graph.connections()) {
@@ -719,7 +800,7 @@ public class NodeGraphWidget extends AbstractWidget {
         }
     }
 
-    protected void renderPending(GuiGraphics g, int mouseX, int mouseY) {
+    protected void renderPending(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, int mouseX, int mouseY) {
         if (pending == null) {
             return;
         }
@@ -786,7 +867,7 @@ public class NodeGraphWidget extends AbstractWidget {
 
     private record DropTarget(NodeId nodeId, int index) {}
 
-    protected Optional<List<Component>> renderNodes(GuiGraphics g, int mouseX, int mouseY, EvaluationResult evalResult) {
+    protected Optional<List<Component>> renderNodes(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, int mouseX, int mouseY, EvaluationResult evalResult) {
         int x0 = getX();
         int y0 = getY();
         int x1 = x0 + width;
@@ -821,7 +902,11 @@ public class NodeGraphWidget extends AbstractWidget {
                 int iy = (int) Math.floor(sy);
                 int iw = (int) Math.round(sw);
                 int ih = (int) Math.round(sh);
+                //? if !modern {
                 g.renderOutline(ix - 1, iy - 1, iw + 2, ih + 2, SELECTED_COLOR);
+                //?} else {
+                g.outline(ix - 1, iy - 1, iw + 2, ih + 2, SELECTED_COLOR);
+                //?}
             }
             if (firstHit.isEmpty()) {
                 firstHit = NodeRenderer.pickHover(layout, viewport, x0, y0, mouseX, mouseY);
@@ -831,7 +916,7 @@ public class NodeGraphWidget extends AbstractWidget {
     }
 
     /** Render the in-progress box-select rectangle (screen space). */
-    protected void renderSelectionBox(GuiGraphics g) {
+    protected void renderSelectionBox(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g) {
         if (!selectionController.isSelecting()) {
             return;
         }
@@ -849,10 +934,14 @@ public class NodeGraphWidget extends AbstractWidget {
         int sMaxX = (int) Math.ceil(viewport.worldToScreenX(maxX, x0));
         int sMaxY = (int) Math.ceil(viewport.worldToScreenY(maxY, y0));
         g.fill(sMinX, sMinY, sMaxX, sMaxY, BOX_FILL);
+        //? if !modern {
         g.renderOutline(sMinX, sMinY, sMaxX - sMinX, sMaxY - sMinY, BOX_OUTLINE);
+        //?} else {
+        g.outline(sMinX, sMinY, sMaxX - sMinX, sMaxY - sMinY, BOX_OUTLINE);
+        //?}
     }
 
-    protected void renderGrid(GuiGraphics g) {
+    protected void renderGrid(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g) {
         int x0 = getX();
         int y0 = getY();
         int x1 = x0 + width;

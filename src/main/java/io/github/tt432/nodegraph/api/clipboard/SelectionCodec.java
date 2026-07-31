@@ -7,6 +7,11 @@ import io.github.tt432.nodegraph.api.model.NodeGraph;
 import io.github.tt432.nodegraph.api.model.NodeGroupId;
 import io.github.tt432.nodegraph.api.model.NodeGroup;
 import io.github.tt432.nodegraph.api.model.NodeId;
+//? if !modern {
+import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -66,7 +71,7 @@ public final class SelectionCodec {
         }
 
         // Collect distinct definitions (decode resolves defId against this map).
-        Map<net.minecraft.resources.ResourceLocation, NodeDefinition> definitions = new LinkedHashMap<>();
+        Map</*? if !modern {*/ ResourceLocation /*?} else {*/ Identifier /*?}*/, NodeDefinition> definitions = new LinkedHashMap<>();
         List<NodeSnapshot> nodeSnaps = new ArrayList<>();
         for (Map.Entry<NodeId, Long> e : nodeLocalId.entrySet()) {
             Node n = graph.node(e.getKey());

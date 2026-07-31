@@ -14,7 +14,11 @@ import io.github.tt432.nodegraph.api.model.NodeGroupId;
 import io.github.tt432.nodegraph.api.model.NodeId;
 import io.github.tt432.nodegraph.client.layout.NodeLayout;
 import io.github.tt432.nodegraph.client.widget.NodeGraphWidget;
+//? if !modern {
 import net.minecraft.client.gui.screens.Screen;
+//?} else {
+import net.minecraft.client.Minecraft;
+//?}
 
 import java.util.ArrayList;
 import java.util.List;
@@ -83,6 +87,14 @@ public final class NodeInteractionController {
         this.widget = widget;
     }
 
+    private static boolean shiftDown() {
+        //? if !modern {
+        return Screen.hasShiftDown();
+        //?} else {
+        return Minecraft.getInstance().hasShiftDown();
+        //?}
+    }
+
     public boolean onMouseClicked(double mx, double my, int button) {
         if (button != 0) {
             return false;
@@ -103,7 +115,7 @@ public final class NodeInteractionController {
         }
         Optional<NodeLayout> header = pickHeader(wx, wy);
         if (header.isPresent()) {
-            if (Screen.hasShiftDown()) {
+            if (shiftDown()) {
                 widget.selection().toggleNode(header.get().node().id());
                 return true;
             }
@@ -117,7 +129,7 @@ public final class NodeInteractionController {
         }
         Optional<NodeGroupId> gh = GroupPick.findGroupHeader(graph, wx, wy);
         if (gh.isPresent()) {
-            if (Screen.hasShiftDown()) {
+            if (shiftDown()) {
                 widget.selection().toggleGroup(gh.get());
                 return true;
             }

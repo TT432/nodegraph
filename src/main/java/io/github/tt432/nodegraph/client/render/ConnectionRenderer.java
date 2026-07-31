@@ -2,7 +2,11 @@ package io.github.tt432.nodegraph.client.render;
 
 import io.github.tt432.nodegraph.client.layout.NodeLayout;
 import io.github.tt432.nodegraph.client.viewport.Viewport;
+//? if !modern {
 import net.minecraft.client.gui.GuiGraphics;
+//?} else {
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+//?}
 
 /**
  * 连线渲染（贝塞尔曲线）。屏幕坐标 + 段包围盒 fill 近似，复用 {@link GuiGraphics#fill}
@@ -32,7 +36,7 @@ public final class ConnectionRenderer {
     /**
      * 渲染贝塞尔连线。返回中点屏幕坐标 {@code [midSx, midSy]}，供调用方叠加警告标记。
      */
-    public static double[] render(GuiGraphics g, Viewport vp, int originX, int originY,
+    public static double[] render(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, Viewport vp, int originX, int originY,
                                   NodeLayout from, int outIdx, NodeLayout to, int inIdx,
                                   int color, int halfThickness) {
         NodeLayout.PortAnchor fa = from.outputPort(outIdx);
@@ -67,7 +71,7 @@ public final class ConnectionRenderer {
     /**
      * 渲染预览贝塞尔（拖拽中）。起点与终点为世界坐标。
      */
-    public static void renderPreview(GuiGraphics g, Viewport vp, int originX, int originY,
+    public static void renderPreview(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, Viewport vp, int originX, int originY,
                                      double fromWx, double fromWy, double toWx, double toWy, int color) {
         double sx0 = vp.worldToScreenX(fromWx, originX);
         double sy0 = vp.worldToScreenY(fromWy, originY);
@@ -92,7 +96,7 @@ public final class ConnectionRenderer {
     }
 
     /** 自动转换警告方块标记。 */
-    public static void renderWarnMark(GuiGraphics g, double sx, double sy) {
+    public static void renderWarnMark(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, double sx, double sy) {
         int half = WARN_MARK_SIZE / 2;
         int ix = (int) Math.round(sx);
         int iy = (int) Math.round(sy);
@@ -108,7 +112,7 @@ public final class ConnectionRenderer {
         return Math.max(Math.abs(sx3 - sx0) * 0.5, MIN_CURVE_DX);
     }
 
-    private static void fillSegment(GuiGraphics g, double x0, double y0, double x1, double y1,
+    private static void fillSegment(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, double x0, double y0, double x1, double y1,
                                     int halfThickness, int color) {
         int minX = (int) Math.floor(Math.min(x0, x1) - halfThickness);
         int minY = (int) Math.floor(Math.min(y0, y1) - halfThickness);

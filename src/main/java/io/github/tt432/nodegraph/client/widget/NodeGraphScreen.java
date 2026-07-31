@@ -2,7 +2,14 @@ package io.github.tt432.nodegraph.client.widget;
 
 import io.github.tt432.nodegraph.api.command.UndoManager;
 import io.github.tt432.nodegraph.api.model.NodeGraph;
+//? if !modern {
 import net.minecraft.client.gui.GuiGraphics;
+//?} else {
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+//?}
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -40,6 +47,7 @@ public class NodeGraphScreen extends Screen {
         canvas = addRenderableWidget(new NodeGraphWidget(0, 0, width, height, graph, undo));
     }
 
+    //? if !modern {
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         return canvas != null && canvas.mouseClicked(mx, my, button);
@@ -54,11 +62,39 @@ public class NodeGraphScreen extends Screen {
     public boolean mouseDragged(double mx, double my, int button, double dragX, double dragY) {
         return canvas != null && canvas.mouseDragged(mx, my, button, dragX, dragY);
     }
+    //?} else {
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        return canvas != null && canvas.mouseClicked(event.x(), event.y(), event.button());
+    }
 
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        return canvas != null && canvas.mouseReleased(event.x(), event.y(), event.button());
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        return canvas != null && canvas.mouseDragged(event.x(), event.y(), event.button(), dragX, dragY);
+    }
+    //?}
+
+    //? if legacy {
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
         return canvas != null && canvas.mouseScrolled(mx, my, delta);
     }
+    //?} else if !modern {
+    @Override
+    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+        return canvas != null && canvas.mouseScrolled(mx, my, scrollX, scrollY);
+    }
+    //?} else {
+    @Override
+    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+        return canvas != null && canvas.mouseScrolled(mx, my, scrollY);
+    }
+    //?}
 
     @Override
     public void mouseMoved(double mx, double my) {
@@ -67,8 +103,41 @@ public class NodeGraphScreen extends Screen {
         }
     }
 
+    //? if !modern {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (handleKeyCode(keyCode)) {
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (handleCharCode(codePoint)) {
+            return true;
+        }
+        return super.charTyped(codePoint, modifiers);
+    }
+    //?} else {
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (handleKeyCode(event.key())) {
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+
+    @Override
+    public boolean charTyped(CharacterEvent event) {
+        if (handleCharCode((char) event.codepoint())) {
+            return true;
+        }
+        return super.charTyped(event);
+    }
+    //?}
+
+    private boolean handleKeyCode(int keyCode) {
         if (canvas != null && canvas.editKey(keyCode)) {
             return true;
         }
@@ -84,20 +153,20 @@ public class NodeGraphScreen extends Screen {
                 return true;
             }
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return false;
     }
 
-    @Override
-    public boolean charTyped(char codePoint, int modifiers) {
+    private boolean handleCharCode(char codePoint) {
         if (canvas != null && canvas.editChar(codePoint)) {
             return true;
         }
         if (canvas != null && canvas.overlayChar(codePoint)) {
             return true;
         }
-        return super.charTyped(codePoint, modifiers);
+        return false;
     }
 
+    //? if !modern {
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         super.render(g, mouseX, mouseY, partialTick);
@@ -106,6 +175,16 @@ public class NodeGraphScreen extends Screen {
             g.drawString(font, hud, width - font.width(hud) - 4, height - font.lineHeight - 2, 0xFFFFFFFF);
         }
     }
+    //?} else {
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        if (canvas != null) {
+            String hud = String.format("Zoom: %d%%", (int) Math.round(canvas.viewport().scale() * 100));
+            graphics.text(font, hud, width - font.width(hud) - 4, height - font.lineHeight - 2, 0xFFFFFFFF);
+        }
+    }
+    //?}
 
     @Override
     public boolean isPauseScreen() {

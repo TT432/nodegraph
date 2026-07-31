@@ -1,7 +1,11 @@
 package io.github.tt432.nodegraph.api.def;
 
 import io.github.tt432.nodegraph.api.type.Type;
+//? if !modern {
 import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -23,7 +27,7 @@ import java.util.Objects;
  * 的搜索面板使用，按注册（迭代）序返回。
  */
 public final class NodeDefinitionCatalog {
-    private final Map<ResourceLocation, NodeDefinition> defs = new LinkedHashMap<>();
+    private final Map</*? if !modern {*/ ResourceLocation /*?} else {*/ Identifier /*?}*/, NodeDefinition> defs = new LinkedHashMap<>();
 
     public NodeDefinition register(NodeDefinition def) {
         Objects.requireNonNull(def, "def");
@@ -33,7 +37,7 @@ public final class NodeDefinitionCatalog {
         return def;
     }
 
-    public NodeDefinition get(ResourceLocation id) {
+    public NodeDefinition get(/*? if !modern {*/ ResourceLocation /*?} else {*/ Identifier /*?}*/ id) {
         NodeDefinition d = defs.get(Objects.requireNonNull(id, "id"));
         if (d == null) {
             throw new IllegalArgumentException("Unknown definition: " + id);
@@ -41,7 +45,7 @@ public final class NodeDefinitionCatalog {
         return d;
     }
 
-    public boolean contains(ResourceLocation id) {
+    public boolean contains(/*? if !modern {*/ ResourceLocation /*?} else {*/ Identifier /*?}*/ id) {
         return defs.containsKey(id);
     }
 

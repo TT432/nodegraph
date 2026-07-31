@@ -4,7 +4,7 @@ import io.github.tt432.nodegraph.api.eval.EvaluationResult;
 import io.github.tt432.nodegraph.api.eval.Evaluator;
 import io.github.tt432.nodegraph.api.model.Node;
 import io.github.tt432.nodegraph.api.model.NodeGraph;
-import net.minecraft.resources.ResourceLocation;
+import io.github.tt432.nodegraph.TestIds;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -41,7 +41,7 @@ class TestDemoGraph {
     }
 
     private static Node findNode(NodeGraph graph, String namespace, String path) {
-        ResourceLocation rl = new ResourceLocation(namespace, path);
+        var rl = TestIds.rl(namespace, path);
         for (Node n : graph.nodes()) {
             if (n.definition().id().equals(rl)) {
                 return n;

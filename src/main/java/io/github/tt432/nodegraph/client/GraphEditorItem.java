@@ -8,15 +8,30 @@ import io.github.tt432.nodegraph.api.model.NodeGraph;
 import io.github.tt432.nodegraph.client.widget.NodeGraphScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+//? if !modern {
 import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
 import net.minecraft.world.InteractionHand;
+//? if !modern {
 import net.minecraft.world.InteractionResultHolder;
+//?} else {
+import net.minecraft.world.InteractionResult;
+//?}
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
+//? if !modern {
 import net.minecraft.world.item.ItemStack;
+//?}
 import net.minecraft.world.level.Level;
+//? if legacy {
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+//?} else {
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+//?}
 import org.slf4j.Logger;
 
 /**
@@ -33,12 +48,17 @@ public class GraphEditorItem extends Item {
     }
 
     @Override
-    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand usedHand) {
-        ItemStack stack = player.getItemInHand(usedHand);
+    public /*? if !modern {*/ InteractionResultHolder<ItemStack> /*?} else {*/ InteractionResult /*?}*/
+            use(Level level, Player player, InteractionHand usedHand) {
         if (level.isClientSide()) {
             openEditor();
         }
+        //? if !modern {
+        ItemStack stack = player.getItemInHand(usedHand);
         return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+        //?} else {
+        return level.isClientSide() ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER;
+        //?}
     }
 
     @OnlyIn(Dist.CLIENT)
@@ -52,7 +72,13 @@ public class GraphEditorItem extends Item {
     private static void evaluateAndLog(NodeGraph graph) {
         try {
             EvaluationResult result = new Evaluator().evaluateAll(graph);
+            //? if legacy {
             ResourceLocation toByteId = new ResourceLocation("nodegraph", "to_byte");
+            //?} else if modern {
+            Identifier toByteId = Identifier.fromNamespaceAndPath("nodegraph", "to_byte");
+            //?} else {
+            ResourceLocation toByteId = ResourceLocation.fromNamespaceAndPath("nodegraph", "to_byte");
+            //?}
             for (Node n : graph.nodes()) {
                 if (n.definition().id().equals(toByteId)) {
                     LOGGER.info("NodeGraph demo evaluated: to_byte.out = {}", result.outputsOf(n.id()).get("out"));

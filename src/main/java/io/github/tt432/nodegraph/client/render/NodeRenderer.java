@@ -7,7 +7,11 @@ import io.github.tt432.nodegraph.api.model.TypedValue;
 import io.github.tt432.nodegraph.client.layout.NodeLayout;
 import io.github.tt432.nodegraph.client.viewport.Viewport;
 import net.minecraft.client.gui.Font;
+//? if !modern {
 import net.minecraft.client.gui.GuiGraphics;
+//?} else {
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+//?}
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -35,7 +39,7 @@ public final class NodeRenderer {
      * @param hasError           该节点求值异常（环/求值失败）→ output 标签显示 {@code name = !}
      * @param editingWidgetIndex 正在用 EditBox 编辑的 widget 行号；-1=无。该行跳过文本，由 EditBox 接管
      */
-    public static void render(GuiGraphics g, Font font, NodeLayout layout, Viewport vp,
+    public static void render(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, Font font, NodeLayout layout, Viewport vp,
                               int originX, int originY, boolean hovered,
                               Map<String, Object> outputs, boolean hasError, int editingWidgetIndex) {
         Objects.requireNonNull(g, "g");
@@ -48,9 +52,15 @@ public final class NodeRenderer {
         double sx = vp.worldToScreenX(node.x(), originX);
         double sy = vp.worldToScreenY(node.y(), originY);
 
+        //? if !modern {
         g.pose().pushPose();
         g.pose().translate(sx, sy, 0.0);
         g.pose().scale((float) s, (float) s, 1.0f);
+        //?} else {
+        g.pose().pushMatrix();
+        g.pose().translate((float) sx, (float) sy);
+        g.pose().scale((float) s, (float) s);
+        //?}
 
         double h = layout.height();
         int outline = hovered ? NodeLayout.OUTLINE_HOVER : NodeLayout.OUTLINE_COLOR;
@@ -58,13 +68,17 @@ public final class NodeRenderer {
         // 体背景 + 头部
         g.fill(0, 0, (int) Math.round(NodeLayout.NODE_WIDTH), (int) Math.round(h), NodeLayout.BODY_COLOR);
         g.fill(0, 0, (int) Math.round(NodeLayout.NODE_WIDTH), (int) Math.round(NodeLayout.HEADER_HEIGHT), NodeLayout.HEADER_COLOR);
+        //? if !modern {
         g.pose().pushPose();
         g.pose().translate(0.0, 0.0, 1.0);
-        g.drawString(font, node.header(),
+        //?}
+        g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, node.header(),
                 (int) Math.round(NodeLayout.PADDING),
                 (int) Math.round((NodeLayout.HEADER_HEIGHT - FONT_HEIGHT) / 2.0),
                 NodeLayout.TEXT_COLOR);
+        //? if !modern {
         g.pose().popPose();
+        //?}
 
         // InputWidget 行（名字左 + 当前值文本右对齐）
         for (int i = 0; i < layout.widgetRowCount(); i++) {
@@ -75,13 +89,13 @@ public final class NodeRenderer {
             int localRowY = i * (int) Math.round(NodeLayout.ROW_HEIGHT)
                     + (int) Math.round(NodeLayout.HEADER_HEIGHT)
                     + (int) Math.round((NodeLayout.ROW_HEIGHT - FONT_HEIGHT) / 2.0);
-            g.drawString(font, w.name(),
+            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, w.name(),
                     (int) Math.round(NodeLayout.PADDING),
                     localRowY,
                     NodeLayout.TEXT_COLOR);
             String valStr = String.valueOf(w.currentValue());
             int valWidth = font.width(valStr);
-            g.drawString(font, valStr,
+            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, valStr,
                     (int) Math.round(NodeLayout.NODE_WIDTH - NodeLayout.PADDING) - valWidth,
                     localRowY,
                     NodeLayout.WIDGET_VALUE_COLOR);
@@ -97,7 +111,7 @@ public final class NodeRenderer {
                     + (int) Math.round(NodeLayout.ROW_HEIGHT / 2.0);
             drawPortDot(g, ax, ay, node.inputs().get(i).type().color());
             Component label = node.inputs().get(i).name();
-            g.drawString(font, label,
+            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, label,
                     ax + (int) Math.round(NodeLayout.PORT_RADIUS) + (int) Math.round(NodeLayout.PADDING / 2.0),
                     ay - (int) Math.round((double) FONT_HEIGHT / 2.0),
                     NodeLayout.TEXT_COLOR);
@@ -121,13 +135,14 @@ public final class NodeRenderer {
                 }
             }
             int lw = font.width(labelText);
-            g.drawString(font, Component.literal(labelText),
+            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, Component.literal(labelText),
                     ax - (int) Math.round(NodeLayout.PORT_RADIUS) - (int) Math.round(NodeLayout.PADDING / 2.0) - lw,
                     ay - (int) Math.round((double) FONT_HEIGHT / 2.0),
                     labelColor);
         }
 
         // 描边（在节点局部坐标，覆盖全节点）
+        //? if !modern {
         g.pose().pushPose();
         g.pose().translate(0.0, 0.0, 2.0);
         g.renderOutline(0, 0,
@@ -137,9 +152,17 @@ public final class NodeRenderer {
         g.pose().popPose();
 
         g.pose().popPose();
+        //?} else {
+        g.outline(0, 0,
+                (int) Math.round(NodeLayout.NODE_WIDTH),
+                (int) Math.round(h),
+                outline);
+
+        g.pose().popMatrix();
+        //?}
     }
 
-    private static void drawPortDot(GuiGraphics g, int cx, int cy, int color) {
+    private static void drawPortDot(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, int cx, int cy, int color) {
         int r = (int) Math.round(NodeLayout.PORT_RADIUS);
         g.fill(cx - r, cy - r, cx + r, cy + r, color);
     }

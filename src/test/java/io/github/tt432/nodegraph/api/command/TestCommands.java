@@ -14,7 +14,7 @@ import io.github.tt432.nodegraph.api.model.TypedValue;
 import io.github.tt432.nodegraph.api.type.Type;
 import io.github.tt432.nodegraph.api.type.TypeRegistry;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import static io.github.tt432.nodegraph.TestIds.rl;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -33,9 +33,6 @@ class TestCommands {
 
     // ---- builders ----------------------------------------------------------
 
-    private static ResourceLocation rl(String id) {
-        return new ResourceLocation("nodegraph", id);
-    }
 
     private static PortSpec port(String key, Type t) {
         return new PortSpec(key, new TypedValue(Component.literal(key), t, Component.literal("d")));

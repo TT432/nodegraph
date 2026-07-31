@@ -1,5 +1,6 @@
 package io.github.tt432.nodegraph.api.eval;
 
+import io.github.tt432.nodegraph.api.def.MultiInputNodeDefinition;
 import io.github.tt432.nodegraph.api.model.Connection;
 import io.github.tt432.nodegraph.api.model.InputWidget;
 import io.github.tt432.nodegraph.api.model.Node;
@@ -46,13 +47,26 @@ final class EvaluationContext {
         stack.push(nodeId);
         onStack.add(nodeId);
         try {
-            Map<String, Object> inputValues = resolveInputs(node);
             Map<String, Object> widgetValues = widgetValuesOf(node);
+            // Input resolution (including cycle detection in recursive evaluate
+            // calls) must stay OUTSIDE the function-invocation catch below —
+            // a CycleException is a structural error, not a function failure.
             Map<String, Object> outputs;
-            try {
-                outputs = node.definition().function().evaluate(inputValues, widgetValues);
-            } catch (Throwable t) {
-                throw new EvaluationException(nodeId, t);
+            if (node.definition().isMultiInput()) {
+                Map<String, List<Object>> inputValues = resolveMultiInputs(node);
+                try {
+                    outputs = ((MultiInputNodeDefinition) node.definition())
+                            .multiFunction().evaluate(inputValues, widgetValues);
+                } catch (Throwable t) {
+                    throw new EvaluationException(nodeId, t);
+                }
+            } else {
+                Map<String, Object> inputValues = resolveInputs(node);
+                try {
+                    outputs = node.definition().function().evaluate(inputValues, widgetValues);
+                } catch (Throwable t) {
+                    throw new EvaluationException(nodeId, t);
+                }
             }
             Map<String, Object> safe = (outputs == null)
                     ? new LinkedHashMap<>()
@@ -73,24 +87,48 @@ final class EvaluationContext {
             Object value = null;
             Optional<Connection> conn = graph.inputConnection(node.id(), i);
             if (conn.isPresent()) {
-                Connection c = conn.get();
-                Map<String, Object> srcOuts = evaluate(c.fromNode());
-                Node src = graph.node(c.fromNode());
-                int outIdx = c.fromOutput();
-                if (outIdx < 0 || outIdx >= src.outputs().size()) {
-                    throw new IllegalStateException("Connection references invalid output index "
-                            + outIdx + " on " + src.id());
-                }
-                String outKey = src.outputs().get(outIdx).key();
-                Object raw = srcOuts.get(outKey);
-                if (c.isAutoConverted() && c.rule() != null) {
-                    raw = c.rule().apply(raw);
-                }
-                value = raw;
+                value = resolveWireValue(conn.get());
             }
             inputValues.put(port.key(), value);
         }
         return inputValues;
+    }
+
+    /**
+     * Multi-input variant of {@link #resolveInputs}: every input port maps to
+     * a {@code List<Object>} holding one element per wire feeding that port,
+     * in connection-creation (insertion) order. Auto-conversion rules are
+     * applied per wire. Unwired ports map to an empty list.
+     */
+    private Map<String, List<Object>> resolveMultiInputs(Node node) {
+        Map<String, List<Object>> inputValues = new LinkedHashMap<>();
+        List<Port> inputs = node.inputs();
+        for (int i = 0; i < inputs.size(); i++) {
+            Port port = inputs.get(i);
+            List<Object> values = new ArrayList<>();
+            for (Connection c : graph.inputConnections(node.id(), i)) {
+                values.add(resolveWireValue(c));
+            }
+            inputValues.put(port.key(), values);
+        }
+        return inputValues;
+    }
+
+    /** Resolve the value carried by one wire, applying its auto-conversion rule if any. */
+    private Object resolveWireValue(Connection c) {
+        Map<String, Object> srcOuts = evaluate(c.fromNode());
+        Node src = graph.node(c.fromNode());
+        int outIdx = c.fromOutput();
+        if (outIdx < 0 || outIdx >= src.outputs().size()) {
+            throw new IllegalStateException("Connection references invalid output index "
+                    + outIdx + " on " + src.id());
+        }
+        String outKey = src.outputs().get(outIdx).key();
+        Object raw = srcOuts.get(outKey);
+        if (c.isAutoConverted() && c.rule() != null) {
+            raw = c.rule().apply(raw);
+        }
+        return raw;
     }
 
     private Map<String, Object> widgetValuesOf(Node node) {

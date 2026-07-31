@@ -6,7 +6,7 @@ import io.github.tt432.nodegraph.api.model.NodeGraph;
 import io.github.tt432.nodegraph.api.model.NodeId;
 import io.github.tt432.nodegraph.api.type.TypeRegistry;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import static io.github.tt432.nodegraph.TestIds.rl;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -28,7 +28,7 @@ class TestMoveNodeCommandFull {
 
     private Node newNode(NodeGraph graph, String id, double x, double y) {
         NodeDefinition def = new NodeDefinition(
-                new ResourceLocation("nodegraph", id),
+                rl(id),
                 Component.literal(id),
                 List.of(), List.of(), List.of(),
                 (inputs, widgets) -> Map.of());

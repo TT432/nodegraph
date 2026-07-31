@@ -1,7 +1,11 @@
 package io.github.tt432.nodegraph.api.clipboard;
 
 import io.github.tt432.nodegraph.api.def.NodeDefinition;
+//? if !modern {
 import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
 
 import java.util.List;
 import java.util.Map;
@@ -20,7 +24,7 @@ import java.util.Map;
  * allocated fresh on paste.
  */
 public record SelectionSnapshot(
-        Map<ResourceLocation, NodeDefinition> definitions,
+        Map</*? if !modern {*/ ResourceLocation /*?} else {*/ Identifier /*?}*/, NodeDefinition> definitions,
         List<NodeSnapshot> nodes,
         List<GroupSnapshot> groups,
         List<ConnectionSnapshot> connections

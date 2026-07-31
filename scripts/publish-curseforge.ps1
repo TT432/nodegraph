@@ -7,17 +7,26 @@
   本脚本自动探测本机 Java 25+，再以该 JVM 启动 gradle 运行 publishCurseForge，
   避免把机器特定的 JDK 路径写入版本控制。
 
+  Stonecutter 三版本布局下 publishCurseForge 是 per-node 任务（:<version>:publishCurseForge）。
+  默认依次发布全部三个版本节点，可用 -Version 只发其中一个。
+
   鉴权：读取 ~/.gradle/gradle.properties 中的 CURSE_TOKEN。
+
+.PARAMETER Version
+  只发布指定 stonecutter 节点（1.20.1 / 1.21.1 / 26.1.2）。缺省发布全部三个。
 
 .PARAMETER ExtraArgs
   透传给 gradlew 的额外参数。例如 -ExtraArgs '--dry-run' 做干跑验证。
 
 .EXAMPLE
   ./scripts/publish-curseforge.ps1
+  ./scripts/publish-curseforge.ps1 -Version 1.20.1
   ./scripts/publish-curseforge.ps1 -ExtraArgs '--dry-run'
 #>
 [CmdletBinding()]
 param(
+    [ValidateSet('', '1.20.1', '1.21.1', '26.1.2')]
+    [string] $Version = '',
     [string[]] $ExtraArgs = @()
 )
 
@@ -84,7 +93,10 @@ if (-not $jvm) {
 
 Write-Host "使用 JVM: $jvm" -ForegroundColor Cyan
 $gradlew = Join-Path $projectRoot 'gradlew.bat'
-$args = @('publishCurseForge', "-Dorg.gradle.java.home=$jvm", '--console=plain') + $ExtraArgs
+$versions = @('1.20.1', '1.21.1', '26.1.2')
+$targets = if ($Version) { @($Version) } else { $versions }
+$tasks = $targets | ForEach-Object { ":$_`:publishCurseForge" }
+$args = @($tasks) + @("-Dorg.gradle.java.home=$jvm", '--console=plain') + @($ExtraArgs)
 Write-Host "运行: $gradlew $($args -join ' ')" -ForegroundColor DarkGray
 & $gradlew @args
 exit $LASTEXITCODE

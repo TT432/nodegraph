@@ -4,7 +4,7 @@ import io.github.tt432.nodegraph.api.model.InputWidgetKind;
 import io.github.tt432.nodegraph.api.model.TypedValue;
 import io.github.tt432.nodegraph.api.type.Type;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import static io.github.tt432.nodegraph.TestIds.rl;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -24,7 +24,7 @@ class TestNodeDefinitionCatalog {
             outs.add(new PortSpec("out" + i, new TypedValue(Component.literal("Out" + i), outTypes.get(i), Component.empty())));
         }
         return new NodeDefinition(
-                new ResourceLocation("nodegraph", id),
+                rl(id),
                 Component.literal(header),
                 List.of(),
                 ins,
@@ -38,9 +38,9 @@ class TestNodeDefinitionCatalog {
         Type num = new Type("number", 0xFFFFFFFF);
         NodeDefinition a = def("add", "Add", List.of(num, num), List.of(num));
         c.register(a);
-        assertSame(a, c.get(new ResourceLocation("nodegraph", "add")));
-        assertTrue(c.contains(new ResourceLocation("nodegraph", "add")));
-        assertFalse(c.contains(new ResourceLocation("nodegraph", "nope")));
+        assertSame(a, c.get(rl("add")));
+        assertTrue(c.contains(rl("add")));
+        assertFalse(c.contains(rl("nope")));
         assertEquals(1, c.size());
     }
 
@@ -55,7 +55,7 @@ class TestNodeDefinitionCatalog {
     @Test
     void getUnknownThrows() {
         assertThrows(IllegalArgumentException.class,
-                () -> new NodeDefinitionCatalog().get(new ResourceLocation("nodegraph", "x")));
+                () -> new NodeDefinitionCatalog().get(rl("x")));
     }
 
     @Test
@@ -100,7 +100,7 @@ class TestNodeDefinitionCatalog {
         // ensure InputWidgetSpec/NodeDefinition wiring compiles with all kinds
         Type num = new Type("number", 0xFFFFFFFF);
         NodeDefinition d = new NodeDefinition(
-                new ResourceLocation("nodegraph", "k"),
+                rl("k"),
                 Component.literal("K"),
                 List.of(
                         new InputWidgetSpec("t", new TypedValue(Component.literal("T"), num, Component.empty()), InputWidgetKind.TEXT, "0"),

@@ -1,3 +1,20 @@
+# NodeGraph 1.2.0
+
+## Added
+
+- **多输入节点**：新节点类型 `MultiInputNodeDefinition`（区别于仅单输入的 `NodeDefinition`），
+  其输入端口可同时接多条 wire，不再触发单源替换；求值函数 `MultiInputNodeFunction` 按键收到
+  `List<Object>`（顺序 = 连接创建序，auto-conversion 逐 wire 生效）。`NodeGraph.inputConnections`
+  返回端口的全部入线。撤销/重做、剪贴板、环检测语义对两类节点各自成立。
+
+## Changed
+
+- **跨版本**：单一源码经 Stonecutter 产出 Minecraft 1.20.1 (Forge) / 1.21.1 (NeoForge) / 26.1.2 (NeoForge)
+  三个变体。版本号改为 `mod_version+{mc_version}-{loader}`（如 `1.2.0+1.21.1-neoforge`），
+  后缀为 semver build metadata，标识构建目标平台，不参与优先级比较；同一 mod_version 的各变体功能等价。
+
+---
+
 # NodeGraph 1.1.2
 
 ## Added

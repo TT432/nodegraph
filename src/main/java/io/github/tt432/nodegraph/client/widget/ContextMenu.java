@@ -1,7 +1,11 @@
 package io.github.tt432.nodegraph.client.widget;
 
 import net.minecraft.client.gui.Font;
+//? if !modern {
 import net.minecraft.client.gui.GuiGraphics;
+//?} else {
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+//?}
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -73,11 +77,15 @@ public final class ContextMenu {
         return items.size() * ROW_HEIGHT + PADDING * 2;
     }
 
-    public void render(GuiGraphics g, Font font, int mouseX, int mouseY) {
+    public void render(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, Font font, int mouseX, int mouseY) {
         int w = width(font);
         int h = height();
         g.fill(x, y, x + w, y + h, COLOR_BG);
+        //? if !modern {
         g.renderOutline(x, y, w, h, COLOR_OUTLINE);
+        //?} else {
+        g.outline(x, y, w, h, COLOR_OUTLINE);
+        //?}
         int rowY = y + PADDING;
         int hoverIdx = rowAt(font, mouseX, mouseY);
         for (int i = 0; i < items.size(); i++) {
@@ -86,7 +94,7 @@ public final class ContextMenu {
                 g.fill(x + 1, rowY, x + w - 1, rowY + ROW_HEIGHT, COLOR_HOVER);
             }
             int color = it.enabled() ? COLOR_TEXT : COLOR_DISABLED;
-            g.drawString(font, it.label(), x + PADDING, rowY + 1, color);
+            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, it.label(), x + PADDING, rowY + 1, color);
             rowY += ROW_HEIGHT;
         }
     }

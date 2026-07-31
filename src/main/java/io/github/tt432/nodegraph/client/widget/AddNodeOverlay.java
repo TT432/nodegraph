@@ -3,7 +3,13 @@ package io.github.tt432.nodegraph.client.widget;
 import io.github.tt432.nodegraph.api.def.NodeDefinition;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.EditBox;
+//? if !modern {
 import net.minecraft.client.gui.GuiGraphics;
+//?} else {
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+//?}
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -73,7 +79,11 @@ public final class AddNodeOverlay {
     }
 
     public boolean keyPressed(int keyCode) {
+        //? if !modern {
         if (searchBox.keyPressed(keyCode, 0, 0)) {
+        //?} else {
+        if (searchBox.keyPressed(new KeyEvent(keyCode, 0, 0))) {
+        //?}
             refresh();
             return true;
         }
@@ -99,7 +109,11 @@ public final class AddNodeOverlay {
     }
 
     public boolean charTyped(char codePoint) {
+        //? if !modern {
         if (searchBox.charTyped(codePoint, 0)) {
+        //?} else {
+        if (searchBox.charTyped(new CharacterEvent(codePoint))) {
+        //?}
             refresh();
             return true;
         }
@@ -145,19 +159,24 @@ public final class AddNodeOverlay {
         selected = result.isEmpty() ? -1 : 0;
     }
 
-    public void render(GuiGraphics g, int mouseX, int mouseY) {
+    public void render(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, int mouseX, int mouseY) {
         int w = WIDTH;
         int h = height();
         g.fill(x, y, x + w, y + h, COLOR_BG);
+        //? if !modern {
         g.renderOutline(x, y, w, h, COLOR_OUTLINE);
         searchBox.render(g, mouseX, mouseY, 0);
+        //?} else {
+        g.outline(x, y, w, h, COLOR_OUTLINE);
+        searchBox.extractRenderState(g, mouseX, mouseY, 0);
+        //?}
         int rowY = rowsTop();
         int limit = Math.min(filtered.size(), MAX_ROWS);
         for (int i = 0; i < limit; i++) {
             boolean hover = rowAt(mouseX, mouseY) == i;
             int bg = (i == selected) ? COLOR_SELECTED : (hover ? COLOR_HOVER : COLOR_BG);
             g.fill(x + 1, rowY, x + w - 1, rowY + ROW_HEIGHT, bg);
-            g.drawString(font, filtered.get(i).header(), x + PADDING, rowY + 1, COLOR_TEXT);
+            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, filtered.get(i).header(), x + PADDING, rowY + 1, COLOR_TEXT);
             rowY += ROW_HEIGHT;
         }
     }

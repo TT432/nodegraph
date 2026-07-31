@@ -20,8 +20,9 @@ import java.util.Optional;
 
 /**
  * The node-graph container: pure data holding nodes, node groups and
- * connections. Connection constraints (output fan-out, input single-source with
- * replacement) are enforced here. View state (pan / zoom) is intentionally not
+ * connections. Connection constraints (output fan-out, per-input single-source
+ * with replacement — unless the target node is multi-input, in which case wires
+ * accumulate) are enforced here. View state (pan / zoom) is intentionally not
  * stored here — it belongs to the view layer.
  */
 public final class NodeGraph {
@@ -259,8 +260,17 @@ public final class NodeGraph {
     }
 
     /**
-     * Create a wire. Enforces input single-source: if the target input already
-     * has a connection, it is replaced.
+     * Create a wire. The semantics depend on the target node kind:
+     * <ul>
+     *   <li><b>Single-input node</b> (default): enforces input single-source —
+     *       if the target input already has a connection, it is replaced.</li>
+     *   <li><b>Multi-input node</b> ({@link io.github.tt432.nodegraph.api.def.NodeDefinition#isMultiInput()}):
+     *       wires accumulate — the new connection is appended without
+     *       replacing existing ones. Re-connecting the exact same endpoint
+     *       quadruple is idempotent: the existing connection is returned and
+     *       no event is fired.</li>
+     * </ul>
+     * Type checking applies per wire in both modes.
      *
      * @throws IllegalArgumentException if incompatible or endpoints invalid.
      */
@@ -270,11 +280,22 @@ public final class NodeGraph {
             throw new IllegalArgumentException("Incompatible connection: "
                     + outputType(fromNode, fromOutput) + " -> " + inputType(toNode, toInput));
         }
-        // Replace existing single-source connection on this input. The
-        // delegate call to disconnect(Connection) also fires REMOVED so the
-        // replacement is observed as REMOVED(old) then CREATED(new).
-        Optional<Connection> existing = inputConnection(toNode, toInput);
-        existing.ifPresent(this::disconnect);
+        if (node(toNode).definition().isMultiInput()) {
+            // Multi-input: wires accumulate. Idempotent on exact duplicates —
+            // return the existing connection without firing an event.
+            for (Connection c : connections) {
+                if (c.fromNode().equals(fromNode) && c.fromOutput() == fromOutput
+                        && c.toNode().equals(toNode) && c.toInput() == toInput) {
+                    return c;
+                }
+            }
+        } else {
+            // Replace existing single-source connection on this input. The
+            // delegate call to disconnect(Connection) also fires REMOVED so the
+            // replacement is observed as REMOVED(old) then CREATED(new).
+            Optional<Connection> existing = inputConnection(toNode, toInput);
+            existing.ifPresent(this::disconnect);
+        }
 
         boolean auto = result == ConnectResult.AUTO_CONVERTED;
         TypeConversionRule rule = auto
@@ -300,25 +321,32 @@ public final class NodeGraph {
      * (undo/redo) and serialization/deserialization, where the connection
      * was already validated at original creation time.
      *
-     * <p>Validates that both endpoints exist and that the target input is not
-     * already driven by a <b>different</b> connection (preserves the input
-     * single-source invariant). Does not perform type compatibility checks.
+     * <p>Validates that both endpoints exist. For a <b>single-input</b> target
+     * node, validates that the target input is not already driven by a
+     * <b>different</b> connection (preserves the input single-source
+     * invariant); for a <b>multi-input</b> target node this check is skipped
+     * because accumulating wires is legal there. Does not perform type
+     * compatibility checks.
      *
      * @throws IllegalArgumentException  if either endpoint node does not exist.
-     * @throws IllegalStateException     if a different connection already
-     *                                  drives the target input.
+     * @throws IllegalStateException     if the target is single-input and a
+     *                                  different connection already drives the
+     *                                  target input.
      */
     public void addConnection(Connection c) {
         Objects.requireNonNull(c, "c");
         // Validate endpoints exist (throws IllegalArgumentException via node()).
         node(c.fromNode());
         node(c.toNode());
-        // Preserve single-source invariant: allow re-adding the exact same
-        // connection (idempotent), but reject a different one on this input.
-        for (Connection existing : connections) {
-            if (existing.toNode().equals(c.toNode()) && existing.toInput() == c.toInput()
-                    && !existing.equals(c)) {
-                throw new IllegalStateException("Input already driven by a different connection: " + existing);
+        // Preserve single-source invariant (single-input targets only): allow
+        // re-adding the exact same connection (idempotent), but reject a
+        // different one on this input.
+        if (!node(c.toNode()).definition().isMultiInput()) {
+            for (Connection existing : connections) {
+                if (existing.toNode().equals(c.toNode()) && existing.toInput() == c.toInput()
+                        && !existing.equals(c)) {
+                    throw new IllegalStateException("Input already driven by a different connection: " + existing);
+                }
             }
         }
         // Avoid duplicate if the exact connection is already present.
@@ -332,7 +360,12 @@ public final class NodeGraph {
         return Collections.unmodifiableList(connections);
     }
 
-    /** The single incoming connection of an input port, if any. */
+    /**
+     * The first (in insertion order) incoming connection of an input port, if
+     * any. For single-input nodes this is <i>the</i> driving connection; for
+     * multi-input nodes there may be several — use {@link #inputConnections}
+     * to get all of them.
+     */
     public Optional<Connection> inputConnection(NodeId node, int toInput) {
         for (Connection c : connections) {
             if (c.toNode().equals(node) && c.toInput() == toInput) {
@@ -340,6 +373,21 @@ public final class NodeGraph {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * All incoming connections of an input port, in insertion (creation)
+     * order. Empty when the port is unwired. For single-input nodes the list
+     * has at most one element; multi-input nodes may have several.
+     */
+    public List<Connection> inputConnections(NodeId node, int toInput) {
+        List<Connection> result = new ArrayList<>();
+        for (Connection c : connections) {
+            if (c.toNode().equals(node) && c.toInput() == toInput) {
+                result.add(c);
+            }
+        }
+        return result;
     }
 
     /** All outgoing connections of an output port (fan-out). */

@@ -1,7 +1,11 @@
 package io.github.tt432.nodegraph.api.clipboard;
 
 import net.minecraft.network.chat.Component;
+//? if !modern {
 import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
 
 import java.util.Map;
 
@@ -19,7 +23,7 @@ import java.util.Map;
  */
 public record NodeSnapshot(
         long localId,
-        ResourceLocation defId,
+        /*? if !modern {*/ ResourceLocation /*?} else {*/ Identifier /*?}*/ defId,
         Component header,
         double x,
         double y,

@@ -3,7 +3,11 @@ package io.github.tt432.nodegraph.client.render;
 import io.github.tt432.nodegraph.api.model.NodeGroup;
 import io.github.tt432.nodegraph.client.viewport.Viewport;
 import net.minecraft.client.gui.Font;
+//? if !modern {
 import net.minecraft.client.gui.GuiGraphics;
+//?} else {
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+//?}
 import net.minecraft.network.chat.Component;
 
 /**
@@ -35,7 +39,7 @@ public final class NodeGroupRenderer {
 
     private NodeGroupRenderer() {}
 
-    public static void render(GuiGraphics g, Font font, NodeGroup group,
+    public static void render(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, Font font, NodeGroup group,
                               Viewport vp, int originX, int originY, boolean selected) {
         double sx = vp.worldToScreenX(group.x(), originX);
         double sy = vp.worldToScreenY(group.y(), originY);
@@ -44,9 +48,15 @@ public final class NodeGroupRenderer {
         double h = group.height();
 
         var pose = g.pose();
+        //? if !modern {
         pose.pushPose();
         pose.translate(sx, sy, 0);
         pose.scale((float) s, (float) s, 1.0f);
+        //?} else {
+        pose.pushMatrix();
+        pose.translate((float) sx, (float) sy);
+        pose.scale((float) s, (float) s);
+        //?}
 
         int outline = selected ? COLOR_SELECTED : COLOR_GROUP_OUTLINE;
         int lw = clampLine(group.scale());
@@ -62,13 +72,13 @@ public final class NodeGroupRenderer {
         g.fill(0, 0, (int) Math.round(w), (int) Math.round(GROUP_HEADER), COLOR_GROUP_HEADER);
         // title
         Component header = group.header();
-        g.drawString(font, header, (int) PADDING, (int) ((GROUP_HEADER - font.lineHeight) / 2.0), COLOR_GROUP_TEXT);
+        g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, header, (int) PADDING, (int) ((GROUP_HEADER - font.lineHeight) / 2.0), COLOR_GROUP_TEXT);
         // scale percentage label (only when scale != 1.0)
         int pct = (int) Math.round(group.scale() * 100);
         if (pct != 100) {
             Component label = Component.literal("(" + pct + "%)");
             int labelW = font.width(label);
-            g.drawString(font, label,
+            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, label,
                     (int) Math.round(w) - labelW - (int) PADDING,
                     (int) ((GROUP_HEADER - font.lineHeight) / 2.0),
                     COLOR_GROUP_TEXT);
@@ -78,7 +88,11 @@ public final class NodeGroupRenderer {
         g.fill((int) Math.round(w) - hs, (int) Math.round(h) - hs,
                 (int) Math.round(w), (int) Math.round(h), COLOR_RESIZE_HANDLE);
 
+        //? if !modern {
         pose.popPose();
+        //?} else {
+        pose.popMatrix();
+        //?}
     }
 
     private static int clampLine(double scale) {

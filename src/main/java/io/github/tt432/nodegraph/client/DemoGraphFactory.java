@@ -12,7 +12,11 @@ import io.github.tt432.nodegraph.api.model.TypedValue;
 import io.github.tt432.nodegraph.api.type.Type;
 import io.github.tt432.nodegraph.api.type.TypeRegistry;
 import net.minecraft.network.chat.Component;
+//? if !modern {
 import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
 
 import java.util.List;
 import java.util.Map;
@@ -24,6 +28,17 @@ import java.util.Map;
 public final class DemoGraphFactory {
     private DemoGraphFactory() {}
 
+    /** 版本分叉收敛点：26.1 起 ResourceLocation 改名 Identifier，1.21 起构造器私有化。 */
+    private static /*? if !modern {*/ ResourceLocation /*?} else {*/ Identifier /*?}*/ id(String path) {
+        //? if legacy {
+        return new ResourceLocation("nodegraph", path);
+        //?} else if modern {
+        return Identifier.fromNamespaceAndPath("nodegraph", path);
+        //?} else {
+        return ResourceLocation.fromNamespaceAndPath("nodegraph", path);
+        //?}
+    }
+
     public static NodeGraph create() {
         TypeRegistry types = new TypeRegistry();
         Type number = types.register("number", 0xFF6ACCD9);
@@ -31,7 +46,7 @@ public final class DemoGraphFactory {
         types.registerConversion(number, byteType, v -> Byte.valueOf(((Number) v).byteValue()));
 
         NodeDefinition constant = new NodeDefinition(
-                new ResourceLocation("nodegraph", "constant_number"),
+                id("constant_number"),
                 Component.literal("Constant"),
                 List.of(new InputWidgetSpec("value",
                         new TypedValue(Component.literal("Value"), number, Component.literal("Constant number value")),
@@ -42,7 +57,7 @@ public final class DemoGraphFactory {
                 (inputs, widgets) -> Map.of("out", toDouble(widgets.get("value"))));
 
         NodeDefinition add = new NodeDefinition(
-                new ResourceLocation("nodegraph", "add"),
+                id("add"),
                 Component.literal("Add"),
                 List.of(),
                 List.of(
@@ -53,7 +68,7 @@ public final class DemoGraphFactory {
                 (inputs, widgets) -> Map.of("result", toDouble(inputs.get("a")) + toDouble(inputs.get("b"))));
 
         NodeDefinition toByte = new NodeDefinition(
-                new ResourceLocation("nodegraph", "to_byte"),
+                id("to_byte"),
                 Component.literal("To Byte"),
                 List.of(),
                 List.of(new PortSpec("in",
