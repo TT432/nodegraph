@@ -32,6 +32,7 @@ public final class NodeGraph {
     private final List<Connection> connections = new ArrayList<>();
     private final List<ConnectionListener> connectionListeners = new ArrayList<>();
     private final List<WidgetValueListener> widgetListeners = new ArrayList<>();
+    private final List<NodeRemoveListener> nodeRemoveListeners = new ArrayList<>();
     private long nextNodeId = 1;
     private long nextGroupId = 1;
     private NodeDefinitionCatalog catalog;
@@ -117,6 +118,7 @@ public final class NodeGraph {
             connections.remove(c);
             fireConnectionEvent(ConnectionEvent.Kind.REMOVED, c);
         }
+        fireNodeRemoved(node);
     }
 
     /**
@@ -446,6 +448,33 @@ public final class NodeGraph {
 
     public void removeWidgetListener(WidgetValueListener listener) {
         widgetListeners.remove(listener);
+    }
+
+    /**
+     * Register a {@link NodeRemoveListener}; fired by {@link #removeNode(NodeId)}
+     * after that node's connection cascades have been announced.
+     */
+    public void addNodeRemoveListener(NodeRemoveListener listener) {
+        Objects.requireNonNull(listener, "listener");
+        nodeRemoveListeners.add(listener);
+    }
+
+    public void removeNodeRemoveListener(NodeRemoveListener listener) {
+        nodeRemoveListeners.remove(listener);
+    }
+
+    private void fireNodeRemoved(Node node) {
+        if (nodeRemoveListeners.isEmpty()) {
+            return;
+        }
+        for (NodeRemoveListener l : new ArrayList<>(nodeRemoveListeners)) {
+            try {
+                l.onNodeRemoved(this, node);
+            } catch (RuntimeException ex) {
+                System.err.println("[NodeGraph] NodeRemoveListener threw: " + ex);
+                ex.printStackTrace(System.err);
+            }
+        }
     }
 
     /**
