@@ -1,3 +1,5 @@
 {
-  "item.nodegraph.graph_editor": "Node Graph Editor"
+  "item.nodegraph.graph_editor": "Node Graph Editor",
+  "key.nodegraph.open_editor": "Open Node Graph Editor",
+  "key.categories.nodegraph": "NodeGraph"
 }

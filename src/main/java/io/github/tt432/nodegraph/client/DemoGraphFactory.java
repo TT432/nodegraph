@@ -1,6 +1,7 @@
 package io.github.tt432.nodegraph.client;
 
 import io.github.tt432.nodegraph.api.def.InputWidgetSpec;
+import io.github.tt432.nodegraph.api.def.MultiInputNodeDefinition;
 import io.github.tt432.nodegraph.api.def.NodeDefinition;
 import io.github.tt432.nodegraph.api.def.NodeDefinitionCatalog;
 import io.github.tt432.nodegraph.api.def.PortSpec;
@@ -81,11 +82,29 @@ public final class DemoGraphFactory {
                     return Map.of("out", v);
                 });
 
+        // 多输入示例：单个 values 端口可接任意多条 wire，求值收到 List（顺序=连接创建序）。
+        MultiInputNodeDefinition multiSum = new MultiInputNodeDefinition(
+                id("multi_sum"),
+                Component.literal("Sum (Multi)"),
+                List.of(),
+                List.of(new PortSpec("values",
+                        new TypedValue(Component.literal("Values"), number, Component.literal("Any number of number inputs")))),
+                List.of(new PortSpec("sum",
+                        new TypedValue(Component.literal("Sum"), number, Component.literal("Sum of all connected inputs")))),
+                (inputs, widgets) -> {
+                    double sum = 0;
+                    for (Object v : inputs.getOrDefault("values", List.of())) {
+                        sum += toDouble(v);
+                    }
+                    return Map.of("sum", sum);
+                });
+
         NodeGraph graph = new NodeGraph(types);
         NodeDefinitionCatalog catalog = new NodeDefinitionCatalog();
         catalog.register(constant);
         catalog.register(add);
         catalog.register(toByte);
+        catalog.register(multiSum);
         graph.setCatalog(catalog);
         Node a = graph.addNode(constant, 40, 40);
         a.widgets().get(0).setCurrentValue("10");
@@ -97,6 +116,13 @@ public final class DemoGraphFactory {
         graph.connect(a.id(), 0, sum.id(), 0);
         graph.connect(b.id(), 0, sum.id(), 1);
         graph.connect(sum.id(), 0, clamp.id(), 0);
+
+        // 多输入演示：两条 wire 进入同一个 values 端口（累计而非替换），再转 byte 显示。
+        Node multiSumNode = graph.addNode(multiSum, 320, 300);
+        Node clamp2 = graph.addNode(toByte, 620, 300);
+        graph.connect(a.id(), 0, multiSumNode.id(), 0);
+        graph.connect(b.id(), 0, multiSumNode.id(), 0);
+        graph.connect(multiSumNode.id(), 0, clamp2.id(), 0);
 
         NodeGroupId inputsGroup = graph.createGroup(Component.literal("Inputs"), 20, 20, 200, 260).id();
         graph.setNodeGroup(a.id(), inputsGroup);

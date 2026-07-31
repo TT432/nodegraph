@@ -17,9 +17,9 @@ class TestDemoGraph {
     void createReturnsPopulatedGraph() {
         NodeGraph graph = DemoGraphFactory.create();
         assertNotNull(graph);
-        assertEquals(4, graph.nodes().size());
+        assertEquals(6, graph.nodes().size());
         assertEquals(1, graph.groups().size());
-        assertEquals(3, graph.connections().size());
+        assertEquals(6, graph.connections().size());
     }
 
     @Test
@@ -37,6 +37,16 @@ class TestDemoGraph {
         EvaluationResult result = new Evaluator().evaluateAll(graph);
         Node sum = findNode(graph, "nodegraph", "add");
         Object res = result.outputsOf(sum.id()).get("result");
+        assertEquals(42.0, ((Number) res).doubleValue(), 1e-9);
+    }
+
+    @Test
+    void multiSumReceivesBothConstantsAsList() {
+        NodeGraph graph = DemoGraphFactory.create();
+        EvaluationResult result = new Evaluator().evaluateAll(graph);
+        Node multiSum = findNode(graph, "nodegraph", "multi_sum");
+        assertEquals(2, graph.inputConnections(multiSum.id(), 0).size());
+        Object res = result.outputsOf(multiSum.id()).get("sum");
         assertEquals(42.0, ((Number) res).doubleValue(), 1e-9);
     }
 
