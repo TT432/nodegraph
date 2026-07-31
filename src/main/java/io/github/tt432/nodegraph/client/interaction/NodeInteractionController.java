@@ -391,6 +391,24 @@ public final class NodeInteractionController {
         return widget.viewport().screenToWorldY(my, widget.getY());
     }
 
+    /**
+     * 取消进行中的拖拽（子图导航等外部状态切换时调用）：不提交任何命令，
+     * 仅回到 IDLE（未提交的位移放弃——节点位置已在拖拽中实时修改，此处保留现状）。
+     */
+    public void cancelActiveDrag() {
+        switch (state) {
+            case DRAG_NODE -> resetDragNode();
+            case DRAG_CONNECTION -> {
+                widget.setPending(null);
+                resetDragConnection();
+            }
+            case DRAG_GROUP -> resetDragGroup();
+            case DRAG_RESIZE_GROUP -> resetDragResize();
+            default -> {
+            }
+        }
+    }
+
     private void resetDragNode() {
         state = State.IDLE;
         dragTarget = null;

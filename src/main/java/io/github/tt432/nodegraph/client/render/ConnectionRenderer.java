@@ -23,10 +23,11 @@ public final class ConnectionRenderer {
     public static final int MIN_SEGMENTS = 12;
     public static final int MAX_SEGMENTS = 64;
     public static final double MIN_CURVE_DX = 24.0;
-    public static final int THICKNESS = 2;
-    public static final int HALF_THICKNESS = THICKNESS / 2;
-    public static final int PREVIEW_THICKNESS = 1;
-    public static final int PREVIEW_HALF = PREVIEW_THICKNESS / 2;
+    /** 线宽（<b>世界单位</b>）：随画布缩放等比变化，与节点保持恒定视觉比例。 */
+    public static final double THICKNESS = 2.0;
+    public static final double HALF_THICKNESS = THICKNESS / 2.0;
+    public static final double PREVIEW_THICKNESS = 1.0;
+    public static final double PREVIEW_HALF = PREVIEW_THICKNESS / 2.0;
     public static final int WARN_COLOR = 0xFFFFAA00;
     public static final int WARN_MARK_SIZE = 4;
     public static final int PREVIEW_ALPHA = 0x80;
@@ -39,10 +40,14 @@ public final class ConnectionRenderer {
 
     /**
      * 渲染贝塞尔连线。返回中点屏幕坐标 {@code [midSx, midSy]}，供调用方叠加警告标记。
+     *
+     * @param halfThicknessWorld 半线宽（世界单位）；屏幕半宽 = halfThicknessWorld × viewport scale，
+     *                           下限 1px 保证任何缩放下可见。
      */
     public static double[] render(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, Viewport vp, int originX, int originY,
                                   NodeLayout from, int outIdx, NodeLayout to, int inIdx,
-                                  int color, int halfThickness) {
+                                  int color, double halfThicknessWorld) {
+        int halfThickness = screenHalf(halfThicknessWorld, vp);
         NodeLayout.PortAnchor fa = from.outputPort(outIdx);
         NodeLayout.PortAnchor ta = to.inputPort(inIdx);
         double sx0 = vp.worldToScreenX(fa.x(), originX);
@@ -88,15 +93,21 @@ public final class ConnectionRenderer {
         double dist = Math.hypot(sx3 - sx0, sy3 - sy0);
         int n = clamp(Math.round((float) (dist / STEP)), MIN_SEGMENTS, MAX_SEGMENTS);
         double px = sx0, py = sy0;
+        int halfThickness = screenHalf(PREVIEW_HALF, vp);
         for (int i = 1; i <= n; i++) {
             double t = (double) i / n;
             double u = 1 - t;
             double qx = u * u * u * sx0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * sx3;
             double qy = u * u * u * sy0 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * sy3;
-            fillSegment(g, px, py, qx, qy, PREVIEW_HALF, color);
+            fillSegment(g, px, py, qx, qy, halfThickness, color);
             px = qx;
             py = qy;
         }
+    }
+
+    /** 世界半宽 → 屏幕半宽（随缩放等比变化，下限 1px）。 */
+    static int screenHalf(double halfThicknessWorld, Viewport vp) {
+        return Math.max(1, (int) Math.round(halfThicknessWorld * vp.scale()));
     }
 
     /** 自动转换警告方块标记。 */

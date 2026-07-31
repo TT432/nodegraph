@@ -1,3 +1,42 @@
+# NodeGraph 1.4.0
+
+## Added
+
+- **子图导航（Blender Group 风格）**：`Node.setSubgraph(NodeGraph)` 挂载子图；双击子图节点进入，
+  ESC 或画布顶部面包屑（可点击跳层）返回；每层视角（平移/缩放）独立保存恢复。`NodeGraphWidget`
+  新增 `pushSubgraph` / `popSubgraph` / `popToDepth` / `depth` / `canPopSubgraph` / `breadcrumbLabels` /
+  `setRootLabel`；`graph()` 语义为当前查看/编辑的图（导航栈顶），`rootGraph()` 返回栈底根图。
+  剪贴板编码跳过携带子图的节点（子图为宿主派生视图，复制会静默丢失嵌套内容）。
+- **CUSTOM / DISPLAY widget 种类**：`InputWidgetKind.CUSTOM` 行的渲染交给经
+  `NodeGraphWidget.registerWidgetRenderer(key, renderer)` 注册的宿主回调（屏幕坐标矩形，
+  预览缩略图等）；`InputWidgetKind.DISPLAY` 渲染只读文本（不响应点击编辑）。
+  `InputWidgetSpec` / `InputWidget` 新增 `height`（世界单位行高，默认 14），布局按行高累计；
+  `InputWidget.setKind` 支持 per 实例只读化覆盖。
+- **节点状态描边色**：`Node.setStatusColor(int argb)`（0 = 默认描边），宿主表达派生状态
+  （未解析红、初始金等）；视觉属性，不入撤销/剪贴板。
+- **Widget 值监听**：`NodeGraph.addWidgetListener(WidgetValueListener)`，命令路径
+  （`SetWidgetValueCommand` execute/undo/redo）触发并携带新旧值；直接
+  `InputWidget.setCurrentValue`（宿主建图填充）不触发；监听器异常隔离。
+
+## Changed
+
+- **连线线宽改为世界单位**：`ConnectionRenderer.THICKNESS`（2.0）与 `PREVIEW_THICKNESS`（1.0）
+  现在是世界单位，随画布缩放等比变化，与节点保持恒定视觉比例（此前为屏幕固定 2px，缩小时
+  相对节点过粗）；任何缩放下保底下限 1px 可见。
+
+---
+
+# NodeGraph 1.3.0
+
+## Added
+
+- **连线中点标签**：`Connection.label`（不入 equals/hashCode）与
+  `NodeGraph.connect(from, out, to, in, label)` 重载（多输入幂等保留原标签）；
+  `ConnectionRenderer.renderLabel` 于连线中点绘制暗底标签（截断 48 字符），
+  供宿主承载引用条件（Molang 原文等）展示。
+
+---
+
 # NodeGraph 1.2.0
 
 ## Added

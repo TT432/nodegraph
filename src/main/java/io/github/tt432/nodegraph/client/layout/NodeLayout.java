@@ -29,6 +29,8 @@ public final class NodeLayout {
     public static final int OUTLINE_HOVER = 0xFFE0E0E0;
     public static final int TEXT_COLOR = 0xFFFFFFFF;
     public static final int WIDGET_VALUE_COLOR = 0xFFBBBBBB;
+    /** DISPLAY（只读）widget 的值文本色：比可编辑值更暗，提示不可编辑。 */
+    public static final int DISPLAY_VALUE_COLOR = 0xFF888888;
 
     public record Rect(double x, double y, double w, double h) {
         public boolean contains(double px, double py) {
@@ -56,12 +58,21 @@ public final class NodeLayout {
         return node.widgets().size();
     }
 
+    /** widget 区总高（世界单位）：逐行累计（CUSTOM 行可更高）。 */
+    public double widgetsHeight() {
+        double sum = 0;
+        for (io.github.tt432.nodegraph.api.model.InputWidget w : node.widgets()) {
+            sum += w.height();
+        }
+        return sum;
+    }
+
     public int portRowCount() {
         return Math.max(node.inputs().size(), node.outputs().size());
     }
 
     public double height() {
-        return HEADER_HEIGHT + widgetRowCount() * ROW_HEIGHT + portRowCount() * ROW_HEIGHT;
+        return HEADER_HEIGHT + widgetsHeight() + portRowCount() * ROW_HEIGHT;
     }
 
     public Rect bounds() {
@@ -76,16 +87,21 @@ public final class NodeLayout {
         return new Rect(node.x(), node.y() + HEADER_HEIGHT, NODE_WIDTH, height() - HEADER_HEIGHT);
     }
 
+    /** 第 i 行 widget 的矩形（世界）：y 由前行高累计。 */
     public Rect inputWidget(int i) {
         if (i < 0 || i >= widgetRowCount()) {
             throw new IndexOutOfBoundsException("inputWidget index " + i + " out of [0," + widgetRowCount() + ")");
         }
-        return new Rect(node.x(), node.y() + HEADER_HEIGHT + i * ROW_HEIGHT, NODE_WIDTH, ROW_HEIGHT);
+        double y = node.y() + HEADER_HEIGHT;
+        for (int j = 0; j < i; j++) {
+            y += node.widgets().get(j).height();
+        }
+        return new Rect(node.x(), y, NODE_WIDTH, node.widgets().get(i).height());
     }
 
     /** 端口区起始 y（世界）。 */
     public double portRowsTop() {
-        return node.y() + HEADER_HEIGHT + widgetRowCount() * ROW_HEIGHT;
+        return node.y() + HEADER_HEIGHT + widgetsHeight();
     }
 
     public PortAnchor inputPort(int i) {

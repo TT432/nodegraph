@@ -147,9 +147,13 @@ public class NodeGraphScreen extends Screen {
         if (canvas != null && canvas.handleKey(keyCode)) {
             return true;
         }
-        if (keyCode == 256) { // ESC: close menu first, else let super close the screen
+        if (keyCode == 256) { // ESC: close menu first, then pop subgraph, else let super close the screen
             if (canvas != null && canvas.menu() != null) {
                 canvas.closeMenu();
+                return true;
+            }
+            if (canvas != null && canvas.canPopSubgraph()) {
+                canvas.popSubgraph();
                 return true;
             }
         }

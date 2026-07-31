@@ -12,14 +12,21 @@ import net.minecraft.network.chat.Component;
 public final class InputWidget {
     private final String key;
     private final TypedValue value;
-    private final InputWidgetKind kind;
+    private InputWidgetKind kind;
     private Object currentValue;
+    /** 行高（世界单位），由 {@code InputWidgetSpec.height} 拷贝；布局与渲染共用。 */
+    private final double height;
 
     public InputWidget(String key, TypedValue value, InputWidgetKind kind, Object currentValue) {
+        this(key, value, kind, currentValue, io.github.tt432.nodegraph.api.def.InputWidgetSpec.DEFAULT_HEIGHT);
+    }
+
+    public InputWidget(String key, TypedValue value, InputWidgetKind kind, Object currentValue, double height) {
         this.key = key;
         this.value = value;
         this.kind = kind;
         this.currentValue = currentValue;
+        this.height = height;
     }
 
     public String key() {
@@ -32,6 +39,18 @@ public final class InputWidget {
 
     public InputWidgetKind kind() {
         return kind;
+    }
+
+    /**
+     * per 实例覆盖 kind（如将 TEXT 实例只读化为 DISPLAY）。定义层 schema 不变；
+     * 仅影响本实例的渲染/编辑行为。
+     */
+    public void setKind(InputWidgetKind kind) {
+        this.kind = java.util.Objects.requireNonNull(kind, "kind");
+    }
+
+    public double height() {
+        return height;
     }
 
     public Type type() {

@@ -46,11 +46,15 @@ public final class SetWidgetValueCommand implements Command {
             captured = true;
         }
         w.setCurrentValue(newValue);
+        graph.fireWidgetValueChanged(target, widgetKey, oldValue, newValue);
     }
 
     @Override
     public void undo() {
-        lookup().setCurrentValue(oldValue);
+        InputWidget w = lookup();
+        Object reverted = w.currentValue();
+        w.setCurrentValue(oldValue);
+        graph.fireWidgetValueChanged(target, widgetKey, reverted, oldValue);
     }
 
     @Override

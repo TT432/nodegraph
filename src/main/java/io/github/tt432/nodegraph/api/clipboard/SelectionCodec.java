@@ -58,11 +58,22 @@ public final class SelectionCodec {
         Objects.requireNonNull(nodes, "nodes");
         Objects.requireNonNull(groups, "groups");
 
-        // Assign local ids in iteration order (deterministic).
+        // Assign local ids in iteration order (deterministic). Nodes carrying a
+        // subgraph are skipped: subgraphs are host-derived views rebuilt by the
+        // host, so copying them would silently drop the nested content.
         Map<NodeId, Long> nodeLocalId = new LinkedHashMap<>();
         long nextNodeId = 0;
+        int skippedSubgraphNodes = 0;
         for (NodeId id : nodes) {
+            if (graph.node(id).hasSubgraph()) {
+                skippedSubgraphNodes++;
+                continue;
+            }
             nodeLocalId.put(id, nextNodeId++);
+        }
+        if (skippedSubgraphNodes > 0) {
+            System.err.println("[NodeGraph] SelectionCodec: skipped " + skippedSubgraphNodes
+                    + " node(s) carrying a subgraph (subgraph content is host-derived and not copied)");
         }
         Map<NodeGroupId, Long> groupLocalId = new LinkedHashMap<>();
         long nextGroupId = 0;

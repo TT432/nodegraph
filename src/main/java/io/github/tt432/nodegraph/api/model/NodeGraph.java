@@ -31,6 +31,7 @@ public final class NodeGraph {
     private final Map<NodeGroupId, NodeGroup> groups = new LinkedHashMap<>();
     private final List<Connection> connections = new ArrayList<>();
     private final List<ConnectionListener> connectionListeners = new ArrayList<>();
+    private final List<WidgetValueListener> widgetListeners = new ArrayList<>();
     private long nextNodeId = 1;
     private long nextGroupId = 1;
     private NodeDefinitionCatalog catalog;
@@ -59,7 +60,7 @@ public final class NodeGraph {
         NodeId id = new NodeId(nextNodeId++);
         List<InputWidget> widgets = new ArrayList<>();
         for (InputWidgetSpec spec : definition.widgets()) {
-            widgets.add(new InputWidget(spec.key(), spec.value(), spec.kind(), spec.defaultValue()));
+            widgets.add(new InputWidget(spec.key(), spec.value(), spec.kind(), spec.defaultValue(), spec.height()));
         }
         List<Port> inputs = new ArrayList<>();
         for (PortSpec spec : definition.inputs()) {
@@ -429,6 +430,41 @@ public final class NodeGraph {
 
     public void removeConnectionListener(ConnectionListener listener) {
         connectionListeners.remove(listener);
+    }
+
+    // ------------------------------------------------------ widget listeners
+
+    /**
+     * Register a {@link WidgetValueListener} to be notified after widget value changes
+     * performed through the command system. Same synchronous dispatch and isolation
+     * semantics as connection listeners.
+     */
+    public void addWidgetListener(WidgetValueListener listener) {
+        Objects.requireNonNull(listener, "listener");
+        widgetListeners.add(listener);
+    }
+
+    public void removeWidgetListener(WidgetValueListener listener) {
+        widgetListeners.remove(listener);
+    }
+
+    /**
+     * Dispatch a widget-value change to every registered {@link WidgetValueListener}.
+     * Called by the command system ({@code SetWidgetValueCommand}); direct
+     * {@link InputWidget#setCurrentValue(Object)} calls bypass it intentionally.
+     */
+    public void fireWidgetValueChanged(NodeId node, String widgetKey, Object oldValue, Object newValue) {
+        if (widgetListeners.isEmpty()) {
+            return;
+        }
+        for (WidgetValueListener l : new ArrayList<>(widgetListeners)) {
+            try {
+                l.onWidgetValueChanged(this, node, widgetKey, oldValue, newValue);
+            } catch (RuntimeException ex) {
+                System.err.println("[NodeGraph] WidgetValueListener threw: " + ex);
+                ex.printStackTrace(System.err);
+            }
+        }
     }
 
     /**

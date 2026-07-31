@@ -95,4 +95,13 @@ public final class Viewport {
         if (s > MAX_SCALE) return MAX_SCALE;
         return s;
     }
+
+    /**
+     * 直接恢复一份视口状态（子图导航保存/恢复视角用）。{@code scale} 限幅到合法区间。
+     */
+    public void setState(double panX, double panY, double scale) {
+        this.panX = panX;
+        this.panY = panY;
+        this.scale = clamp(scale);
+    }
 }

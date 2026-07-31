@@ -26,11 +26,13 @@ import io.github.tt432.nodegraph.api.model.NodeGroupId;
 import io.github.tt432.nodegraph.api.model.NodeId;
 import io.github.tt432.nodegraph.api.model.Port;
 import io.github.tt432.nodegraph.api.type.Type;
+import io.github.tt432.nodegraph.client.interaction.DoubleClickTracker;
 import io.github.tt432.nodegraph.client.interaction.GroupPick;
 import io.github.tt432.nodegraph.client.interaction.NodeInteractionController;
 import io.github.tt432.nodegraph.client.interaction.SelectionController;
 import io.github.tt432.nodegraph.client.layout.NodeLayout;
 import io.github.tt432.nodegraph.client.render.ConnectionRenderer;
+import io.github.tt432.nodegraph.client.render.CustomWidgetRenderer;
 import io.github.tt432.nodegraph.client.render.NodeGroupRenderer;
 import io.github.tt432.nodegraph.client.render.NodeRenderer;
 import io.github.tt432.nodegraph.client.selection.SelectionModel;
@@ -54,11 +56,14 @@ import net.minecraft.client.gui.screens.Screen;
 //?}
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -91,7 +96,6 @@ public class NodeGraphWidget extends AbstractWidget {
     public static final int BOX_FILL = 0x40FFFFFF;
     public static final int BOX_OUTLINE = 0xFFAAAAAA;
 
-    private final NodeGraph graph;
     private final Viewport viewport;
     private final Font font;
     private final UndoManager undo;
@@ -99,6 +103,29 @@ public class NodeGraphWidget extends AbstractWidget {
     private final Clipboard clipboard;
     private final SelectionModel selection;
     private final SelectionController selectionController;
+
+    /**
+     * 子图导航栈：栈底 = 根图（构造传入），栈顶 = 当前查看/编辑的图。
+     * {@link #graph()} 返回栈顶图——所有渲染/交互/剪贴板/求值都作用当前层。
+     */
+    private final Deque<GraphFrame> graphStack = new ArrayDeque<>();
+    /** CUSTOM widget 渲染器（widget key → 宿主回调）。 */
+    private final Map<String, CustomWidgetRenderer> widgetRenderers = new ConcurrentHashMap<>();
+    private final DoubleClickTracker doubleClick = new DoubleClickTracker();
+
+    /** 导航栈一层：图 + 面包屑标签 + 离开时保存的视角。 */
+    private static final class GraphFrame {
+        final NodeGraph graph;
+        String label;
+        double panX;
+        double panY;
+        double scale = 1.0;
+
+        GraphFrame(NodeGraph graph, String label) {
+            this.graph = graph;
+            this.label = label;
+        }
+    }
 
     private enum State { IDLE, PANNING }
 
@@ -152,7 +179,7 @@ public class NodeGraphWidget extends AbstractWidget {
 
     public NodeGraphWidget(int x, int y, int width, int height, NodeGraph graph, UndoManager undo) {
         super(x, y, width, height, Component.empty());
-        this.graph = Objects.requireNonNull(graph, "graph");
+        Objects.requireNonNull(graph, "graph");
         this.undo = Objects.requireNonNull(undo, "undo");
         this.viewport = new Viewport();
         this.font = Minecraft.getInstance().font;
@@ -160,10 +187,97 @@ public class NodeGraphWidget extends AbstractWidget {
         this.clipboard = new Clipboard();
         this.selection = new SelectionModel();
         this.selectionController = new SelectionController(this);
+        this.graphStack.push(new GraphFrame(graph, "root"));
     }
 
+    /** 当前查看/编辑的图（子图导航栈顶）。 */
     public NodeGraph graph() {
-        return graph;
+        return graphStack.peek().graph;
+    }
+
+    /** 根图（构造传入的图，导航栈底）。 */
+    public NodeGraph rootGraph() {
+        return graphStack.getLast().graph;
+    }
+
+    /** 设置根层面包屑标签（如实体标识）。 */
+    public void setRootLabel(String label) {
+        graphStack.getLast().label = label;
+    }
+
+    /** 当前导航深度（1 = 根图）。 */
+    public int depth() {
+        return graphStack.size();
+    }
+
+    public boolean canPopSubgraph() {
+        return graphStack.size() > 1;
+    }
+
+    /**
+     * 进入节点的子图（双击子图节点）。保存当前层视角，子图以默认视角打开。
+     * 节点无子图时无操作。
+     */
+    public void pushSubgraph(Node node) {
+        Objects.requireNonNull(node, "node");
+        if (!node.hasSubgraph()) {
+            return;
+        }
+        GraphFrame parent = graphStack.peek();
+        parent.panX = viewport.panX();
+        parent.panY = viewport.panY();
+        parent.scale = viewport.scale();
+        graphStack.push(new GraphFrame(node.subgraph(), node.header().getString()));
+        viewport.setState(0, 0, 1.0);
+        resetTransientState();
+    }
+
+    /** 返回上一层（ESC）。等价于 {@link #popToDepth(int)}（depth-1）。 */
+    public void popSubgraph() {
+        popToDepth(graphStack.size() - 1);
+    }
+
+    /** 跳回指定层（面包屑点击；1 = 根）。不小于当前深度时无操作。 */
+    public void popToDepth(int targetDepth) {
+        if (targetDepth < 1 || targetDepth >= graphStack.size()) {
+            return;
+        }
+        while (graphStack.size() > targetDepth) {
+            graphStack.pop();
+        }
+        GraphFrame target = graphStack.peek();
+        viewport.setState(target.panX, target.panY, target.scale);
+        resetTransientState();
+    }
+
+    /** 各层标签（根 → 当前），供面包屑渲染/拾取。 */
+    public List<String> breadcrumbLabels() {
+        List<String> labels = new ArrayList<>(graphStack.size());
+        java.util.Iterator<GraphFrame> it = graphStack.descendingIterator();
+        while (it.hasNext()) {
+            labels.add(it.next().label);
+        }
+        return labels;
+    }
+
+    /** 切换图层前的瞬态清理：提交编辑、中断连线预览、清空选择与菜单、重置双击。 */
+    private void resetTransientState() {
+        confirmEdit();
+        cancelControllerDrag();
+        pending = null;
+        selection.clear();
+        closeMenu();
+        if (addNodeOverlay != null) {
+            addNodeOverlay = null;
+        }
+        doubleClick.reset();
+    }
+
+    /** 注册 CUSTOM widget 渲染器（按 widget key；覆盖同 key 旧值）。 */
+    public void registerWidgetRenderer(String widgetKey, CustomWidgetRenderer renderer) {
+        Objects.requireNonNull(widgetKey, "widgetKey");
+        Objects.requireNonNull(renderer, "renderer");
+        widgetRenderers.put(widgetKey, renderer);
     }
 
     public Viewport viewport() {
@@ -263,6 +377,27 @@ public class NodeGraphWidget extends AbstractWidget {
             return true;
         }
         if (button == 0) {
+            // 面包屑（子图导航）：点击画布顶部条 → 跳到对应层
+            if (canPopSubgraph() && my >= getY() && my < getY() + BreadcrumbBar.BAR_HEIGHT) {
+                BreadcrumbBar bar = BreadcrumbBar.layout(breadcrumbLabels(), font::width,
+                        font.width(" / "), getX());
+                int target = bar.pick((int) mx);
+                if (target >= 0) {
+                    popToDepth(target + 1);
+                }
+                return true;
+            }
+            // 双击子图节点 → 进入子图（端口命中时让位连线拖拽，不做双击判定）
+            double wx0 = worldX(mx);
+            double wy0 = worldY(my);
+            boolean onPort = pickInputPortAt(wx0, wy0).isPresent() || pickOutputPortAt(wx0, wy0).isPresent();
+            Node nodeHit = onPort ? null : nodeAt(wx0, wy0);
+            if (doubleClick.click(System.currentTimeMillis(), nodeHit != null ? nodeHit.id() : null,
+                    DoubleClickTracker.DEFAULT_THRESHOLD_MS)
+                    && nodeHit != null && nodeHit.hasSubgraph()) {
+                pushSubgraph(nodeHit);
+                return true;
+            }
             if (controller.onMouseClicked(mx, my, button)) {
                 return true;
             }
@@ -364,7 +499,7 @@ public class NodeGraphWidget extends AbstractWidget {
         }
         double s = viewport.scale();
         if (ctrlDown()) {
-            Optional<NodeGroupId> gh = GroupPick.findGroupHeader(graph, worldX(mx), worldY(my));
+            Optional<NodeGroupId> gh = GroupPick.findGroupHeader(graph(), worldX(mx), worldY(my));
             if (gh.isPresent()) {
                 adjustGroupScale(gh.get(), delta);
                 return true;
@@ -380,7 +515,7 @@ public class NodeGraphWidget extends AbstractWidget {
     }
 
     private void adjustGroupScale(NodeGroupId gid, double delta) {
-        NodeGroup grp = graph.group(gid);
+        NodeGroup grp = graph().group(gid);
         double factor = Math.pow(1.1, delta);
         double newScale = grp.scale() * factor;
         if (newScale < NodeGroupRenderer.MIN_GROUP_SCALE) newScale = NodeGroupRenderer.MIN_GROUP_SCALE;
@@ -388,7 +523,7 @@ public class NodeGraphWidget extends AbstractWidget {
         if (newScale == grp.scale()) {
             return;
         }
-        undo.apply(new SetGroupTransformCommand(graph, gid, grp.x(), grp.y(), grp.width(), grp.height(), newScale));
+        undo.apply(new SetGroupTransformCommand(graph(), gid, grp.x(), grp.y(), grp.width(), grp.height(), newScale));
     }
 
     // ---- selection / clipboard actions (shared by menu + keyboard) --------
@@ -397,14 +532,14 @@ public class NodeGraphWidget extends AbstractWidget {
         if (selection.isEmpty()) {
             return;
         }
-        clipboard.copy(graph, selection.nodes(), selection.groups());
+        clipboard.copy(graph(), selection.nodes(), selection.groups());
     }
 
     public void cut() {
         if (selection.isEmpty()) {
             return;
         }
-        clipboard.cut(graph, selection.nodes(), selection.groups(), undo);
+        clipboard.cut(graph(), selection.nodes(), selection.groups(), undo);
         selection.clear();
     }
 
@@ -414,7 +549,7 @@ public class NodeGraphWidget extends AbstractWidget {
         }
         double ox = viewport.panX() + 16;
         double oy = viewport.panY() + 16;
-        clipboard.paste(graph, undo, ox, oy);
+        clipboard.paste(graph(), undo, ox, oy);
     }
 
     public void delete() {
@@ -423,10 +558,10 @@ public class NodeGraphWidget extends AbstractWidget {
         }
         List<Command> children = new ArrayList<>();
         for (NodeGroupId gid : selection.groups()) {
-            children.add(new RemoveGroupCommand(graph, gid));
+            children.add(new RemoveGroupCommand(graph(), gid));
         }
         for (NodeId nid : selection.nodes()) {
-            children.add(new RemoveNodeCommand(graph, nid));
+            children.add(new RemoveNodeCommand(graph(), nid));
         }
         undo.apply(new CompositeCommand("Delete", children));
         selection.clear();
@@ -442,14 +577,14 @@ public class NodeGraphWidget extends AbstractWidget {
         double maxX = Double.NEGATIVE_INFINITY;
         double maxY = Double.NEGATIVE_INFINITY;
         for (NodeId nid : nodes) {
-            NodeLayout l = new NodeLayout(graph.node(nid));
+            NodeLayout l = new NodeLayout(graph().node(nid));
             NodeLayout.Rect b = l.bounds();
             minX = Math.min(minX, b.x());
             minY = Math.min(minY, b.y());
             maxX = Math.max(maxX, b.x() + b.w());
             maxY = Math.max(maxY, b.y() + b.h());
         }
-        undo.apply(new GroupNodesCommand(graph, Component.literal("Group"),
+        undo.apply(new GroupNodesCommand(graph(), Component.literal("Group"),
                 minX, minY, maxX - minX, maxY - minY, nodes));
         selection.clear();
     }
@@ -492,7 +627,7 @@ public class NodeGraphWidget extends AbstractWidget {
         double wy = worldY(my);
         // ensure the right-clicked node is part of the selection
         NodeId hit = null;
-        for (Node n : graph.nodes()) {
+        for (Node n : graph().nodes()) {
             if (new NodeLayout(n).bounds().contains(wx, wy)) {
                 hit = n.id();
                 break;
@@ -515,7 +650,7 @@ public class NodeGraphWidget extends AbstractWidget {
         if (selection.nodeCount() > 1) {
             items.add(new ContextMenu.MenuItem(Component.literal("Group"), true, this::groupSelection));
         }
-        if (graph.catalog() != null && !graph.catalog().isEmpty()) {
+        if (graph().catalog() != null && !graph().catalog().isEmpty()) {
             items.add(new ContextMenu.MenuItem(Component.literal("Add Node..."), true,
                     () -> openAddNodeOverlay(mx, my)));
         }
@@ -535,7 +670,7 @@ public class NodeGraphWidget extends AbstractWidget {
 
     /** 打开添加节点浮层（无类型过滤，用于右键菜单"Add Node..."）。放置点 = 屏幕坐标对应的世界点。 */
     public void openAddNodeOverlay(double screenX, double screenY) {
-        NodeDefinitionCatalog catalog = graph.catalog();
+        NodeDefinitionCatalog catalog = graph().catalog();
         if (catalog == null || catalog.isEmpty()) {
             return;
         }
@@ -543,7 +678,7 @@ public class NodeGraphWidget extends AbstractWidget {
         double wy = worldY(screenY);
         List<NodeDefinition> candidates = new ArrayList<>(catalog.all());
         openAddNodeOverlayCore(screenX, screenY, candidates, def ->
-                undo.apply(new AddNodeCommand(graph, def, wx, wy)));
+                undo.apply(new AddNodeCommand(graph(), def, wx, wy)));
     }
 
     /**
@@ -554,7 +689,7 @@ public class NodeGraphWidget extends AbstractWidget {
      */
     public void openAddNodeForConnection(double screenX, double screenY, double worldX, double worldY,
                                          NodeId sourceNode, int sourcePort, boolean fromOutput) {
-        NodeDefinitionCatalog catalog = graph.catalog();
+        NodeDefinitionCatalog catalog = graph().catalog();
         if (catalog == null) {
             return;
         }
@@ -567,15 +702,15 @@ public class NodeGraphWidget extends AbstractWidget {
             return;
         }
         openAddNodeOverlayCore(screenX, screenY, candidates, def -> {
-            AddNodeCommand add = new AddNodeCommand(graph, def, worldX, worldY);
+            AddNodeCommand add = new AddNodeCommand(graph(), def, worldX, worldY);
             undo.apply(add);
             NodeId newNode = add.node().id();
             int matched = findPortOfType(newNode, !fromOutput, t);
             if (matched >= 0) {
                 if (fromOutput) {
-                    undo.apply(new ConnectCommand(graph, sourceNode, sourcePort, newNode, matched));
+                    undo.apply(new ConnectCommand(graph(), sourceNode, sourcePort, newNode, matched));
                 } else {
-                    undo.apply(new ConnectCommand(graph, newNode, matched, sourceNode, sourcePort));
+                    undo.apply(new ConnectCommand(graph(), newNode, matched, sourceNode, sourcePort));
                 }
             }
         });
@@ -587,7 +722,7 @@ public class NodeGraphWidget extends AbstractWidget {
     }
 
     private Type portType(NodeId node, int portIndex, boolean output) {
-        Node n = graph.node(node);
+        Node n = graph().node(node);
         if (output) {
             if (portIndex < 0 || portIndex >= n.outputs().size()) {
                 return null;
@@ -601,7 +736,7 @@ public class NodeGraphWidget extends AbstractWidget {
     }
 
     private int findPortOfType(NodeId node, boolean input, Type t) {
-        Node n = graph.node(node);
+        Node n = graph().node(node);
         List<Port> ports = input ? n.inputs() : n.outputs();
         for (int i = 0; i < ports.size(); i++) {
             if (ports.get(i).value().type().equals(t)) {
@@ -669,11 +804,11 @@ public class NodeGraphWidget extends AbstractWidget {
         int x0 = getX();
         int y0 = getY();
         double s = viewport.scale();
-        double sx = viewport.worldToScreenX(node.x(), x0);
-        double wy = node.y() + NodeLayout.HEADER_HEIGHT + widgetIndex * NodeLayout.ROW_HEIGHT;
-        double sy = viewport.worldToScreenY(wy, y0);
-        int sw = (int) Math.round(NodeLayout.NODE_WIDTH * s);
-        int sh = (int) Math.round(NodeLayout.ROW_HEIGHT * s);
+        NodeLayout.Rect row = new NodeLayout(node).inputWidget(widgetIndex);
+        double sx = viewport.worldToScreenX(row.x(), x0);
+        double sy = viewport.worldToScreenY(row.y(), y0);
+        int sw = (int) Math.round(row.w() * s);
+        int sh = (int) Math.round(row.h() * s);
         EditBox box = new EditBox(font, (int) Math.round(sx), (int) Math.round(sy), sw, sh, Component.literal("edit"));
         box.setMaxLength(256);
         box.setValue(String.valueOf(w.currentValue()));
@@ -690,10 +825,10 @@ public class NodeGraphWidget extends AbstractWidget {
             return;
         }
         String newVal = activeEdit.getValue();
-        Node n = graph.node(editNode);
+        Node n = graph().node(editNode);
         String oldVal = String.valueOf(n.widgets().get(editWidgetIndex).currentValue());
         if (!newVal.equals(oldVal)) {
-            undo.apply(new SetWidgetValueCommand(graph, editNode, editKey, newVal));
+            undo.apply(new SetWidgetValueCommand(graph(), editNode, editKey, newVal));
         }
         cancelEdit();
     }
@@ -705,10 +840,25 @@ public class NodeGraphWidget extends AbstractWidget {
         editKey = null;
     }
 
+    /** 取消进行中的拖拽/连线（导航切换时调用，见 {@link #resetTransientState}）。 */
+    private void cancelControllerDrag() {
+        controller.cancelActiveDrag();
+    }
+
+    /** 命中当前图最上层 bounds 包含 (wx,wy) 的节点；无命中返回 null。 */
+    private Node nodeAt(double wx, double wy) {
+        for (Node n : graph().nodes()) {
+            if (new NodeLayout(n).bounds().contains(wx, wy)) {
+                return n;
+            }
+        }
+        return null;
+    }
+
     private record TextWidgetHit(Node node, int index) {}
 
     private TextWidgetHit pickTextWidget(double wx, double wy) {
-        for (Node n : graph.nodes()) {
+        for (Node n : graph().nodes()) {
             NodeLayout l = new NodeLayout(n);
             Optional<Integer> idx = l.pickInputWidget(wx, wy);
             if (idx.isPresent()) {
@@ -741,7 +891,7 @@ public class NodeGraphWidget extends AbstractWidget {
         renderConnections(g);
         EvaluationResult evalResult;
         try {
-            evalResult = new Evaluator().evaluateAll(graph);
+            evalResult = new Evaluator().evaluateAll(graph());
         } catch (RuntimeException e) {
             evalResult = null;
         }
@@ -749,6 +899,7 @@ public class NodeGraphWidget extends AbstractWidget {
         renderSelectionBox(g);
         renderPending(g, mouseX, mouseY);
         g.disableScissor();
+        renderBreadcrumb(g, mouseX, mouseY);
         if (tooltip.isPresent()) {
             //? if !modern {
             g.renderComponentTooltip(font, tooltip.get(), mouseX, mouseY);
@@ -774,7 +925,7 @@ public class NodeGraphWidget extends AbstractWidget {
     protected void renderGroups(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g) {
         int x0 = getX();
         int y0 = getY();
-        for (NodeGroup grp : graph.groups()) {
+        for (NodeGroup grp : graph().groups()) {
             boolean selected = selection.containsGroup(grp.id());
             NodeGroupRenderer.render(g, font, grp, viewport, x0, y0, selected);
         }
@@ -783,9 +934,9 @@ public class NodeGraphWidget extends AbstractWidget {
     protected void renderConnections(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g) {
         int x0 = getX();
         int y0 = getY();
-        for (Connection c : graph.connections()) {
-            Node from = graph.node(c.fromNode());
-            Node to = graph.node(c.toNode());
+        for (Connection c : graph().connections()) {
+            Node from = graph().node(c.fromNode());
+            Node to = graph().node(c.toNode());
             NodeLayout fromLayout = new NodeLayout(from);
             NodeLayout toLayout = new NodeLayout(to);
             int color = c.isAutoConverted()
@@ -841,7 +992,7 @@ public class NodeGraphWidget extends AbstractWidget {
             toNode = pending.fromLayout().node().id();
             toInput = pending.portIndex();
         }
-        ConnectResult r = graph.canConnect(fromNode, fromOutput, toNode, toInput);
+        ConnectResult r = graph().canConnect(fromNode, fromOutput, toNode, toInput);
         if (r == ConnectResult.INCOMPATIBLE) {
             return ConnectionRenderer.withAlpha(0xFF0000, ConnectionRenderer.PREVIEW_ALPHA);
         }
@@ -849,7 +1000,7 @@ public class NodeGraphWidget extends AbstractWidget {
     }
 
     private Optional<DropTarget> pickInputPortAt(double wx, double wy) {
-        for (Node n : graph.nodes()) {
+        for (Node n : graph().nodes()) {
             Optional<Integer> idx = new NodeLayout(n).pickInputPort(wx, wy);
             if (idx.isPresent()) {
                 return Optional.of(new DropTarget(n.id(), idx.get()));
@@ -859,7 +1010,7 @@ public class NodeGraphWidget extends AbstractWidget {
     }
 
     private Optional<DropTarget> pickOutputPortAt(double wx, double wy) {
-        for (Node n : graph.nodes()) {
+        for (Node n : graph().nodes()) {
             Optional<Integer> idx = new NodeLayout(n).pickOutputPort(wx, wy);
             if (idx.isPresent()) {
                 return Optional.of(new DropTarget(n.id(), idx.get()));
@@ -877,7 +1028,7 @@ public class NodeGraphWidget extends AbstractWidget {
         int y1 = y0 + height;
         double s = viewport.scale();
         Optional<List<Component>> firstHit = Optional.empty();
-        for (Node node : graph.nodes()) {
+        for (Node node : graph().nodes()) {
             NodeLayout layout = new NodeLayout(node);
             double sx = viewport.worldToScreenX(node.x(), x0);
             double sy = viewport.worldToScreenY(node.y(), y0);
@@ -900,6 +1051,10 @@ public class NodeGraphWidget extends AbstractWidget {
             }
             int editingIdx = (editNode != null && editNode.equals(node.id())) ? editWidgetIndex : -1;
             NodeRenderer.render(g, font, layout, viewport, x0, y0, hovered, outputs, hasError, editingIdx);
+            // CUSTOM widget 行：交给宿主注册的渲染器（屏幕坐标矩形）
+            if (!widgetRenderers.isEmpty()) {
+                renderCustomWidgets(g, node, layout, mouseX, mouseY);
+            }
             if (selection.containsNode(node.id())) {
                 int ix = (int) Math.floor(sx);
                 int iy = (int) Math.floor(sy);
@@ -918,7 +1073,54 @@ public class NodeGraphWidget extends AbstractWidget {
         return firstHit;
     }
 
-    /** Render the in-progress box-select rectangle (screen space). */
+    /** 逐 CUSTOM widget 行调用宿主渲染器（区域 = 行世界矩形 × scale）。 */
+    private void renderCustomWidgets(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g,
+                                     Node node, NodeLayout layout, int mouseX, int mouseY) {
+        List<InputWidget> widgets = node.widgets();
+        for (int i = 0; i < widgets.size(); i++) {
+            InputWidget w = widgets.get(i);
+            if (w.kind() != InputWidgetKind.CUSTOM) {
+                continue;
+            }
+            CustomWidgetRenderer renderer = widgetRenderers.get(w.key());
+            if (renderer == null) {
+                continue;
+            }
+            NodeLayout.Rect row = layout.inputWidget(i);
+            double sx = viewport.worldToScreenX(row.x(), getX());
+            double sy = viewport.worldToScreenY(row.y(), getY());
+            renderer.render(g, node, w, sx, sy, row.w() * viewport.scale(), row.h() * viewport.scale(),
+                    viewport, mouseX, mouseY);
+        }
+    }
+
+    /** 子图导航面包屑（画布顶部，屏幕坐标；深度 > 1 时绘制）。 */
+    protected void renderBreadcrumb(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g,
+                                    int mouseX, int mouseY) {
+        if (!canPopSubgraph()) {
+            return;
+        }
+        List<String> labels = breadcrumbLabels();
+        BreadcrumbBar bar = BreadcrumbBar.layout(labels, font::width, font.width(" / "), getX());
+        int x0 = getX();
+        int y0 = getY();
+        int x1 = x0 + width;
+        g.fill(x0, y0, x1, y0 + BreadcrumbBar.BAR_HEIGHT, 0xE0101010);
+        g.fill(x0, y0 + BreadcrumbBar.BAR_HEIGHT - 1, x1, y0 + BreadcrumbBar.BAR_HEIGHT, 0xFF444444);
+        List<BreadcrumbBar.Item> items = bar.items();
+        int textY = y0 + (BreadcrumbBar.BAR_HEIGHT - font.lineHeight) / 2;
+        for (int i = 0; i < items.size(); i++) {
+            BreadcrumbBar.Item item = items.get(i);
+            boolean current = i == items.size() - 1;
+            boolean hoveredCrumb = mouseY >= y0 && mouseY < y0 + BreadcrumbBar.BAR_HEIGHT
+                    && mouseX >= item.x0() && mouseX < item.x1();
+            int color = current ? 0xFFFFFFFF : (hoveredCrumb ? 0xFFFFD75F : 0xFF9AB0C0);
+            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, item.label(), item.x0(), textY, color);
+            if (!current) {
+                g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, " / ", item.x1(), textY, 0xFF666666);
+            }
+        }
+    }
     protected void renderSelectionBox(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g) {
         if (!selectionController.isSelecting()) {
             return;

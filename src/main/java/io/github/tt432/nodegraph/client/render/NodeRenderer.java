@@ -1,6 +1,7 @@
 package io.github.tt432.nodegraph.client.render;
 
 import io.github.tt432.nodegraph.api.model.InputWidget;
+import io.github.tt432.nodegraph.api.model.InputWidgetKind;
 import io.github.tt432.nodegraph.api.model.Node;
 import io.github.tt432.nodegraph.api.model.Port;
 import io.github.tt432.nodegraph.api.model.TypedValue;
@@ -64,6 +65,9 @@ public final class NodeRenderer {
 
         double h = layout.height();
         int outline = hovered ? NodeLayout.OUTLINE_HOVER : NodeLayout.OUTLINE_COLOR;
+        if (node.statusColor() != 0) {
+            outline = node.statusColor();
+        }
 
         // 体背景 + 头部
         g.fill(0, 0, (int) Math.round(NodeLayout.NODE_WIDTH), (int) Math.round(h), NodeLayout.BODY_COLOR);
@@ -76,34 +80,43 @@ public final class NodeRenderer {
                 (int) Math.round(NodeLayout.PADDING),
                 (int) Math.round((NodeLayout.HEADER_HEIGHT - FONT_HEIGHT) / 2.0),
                 NodeLayout.TEXT_COLOR);
+        // 子图标识：header 右侧嵌套双方框（双击可进入子图）
+        if (node.hasSubgraph()) {
+            int ix = (int) Math.round(NodeLayout.NODE_WIDTH - NodeLayout.PADDING - 8);
+            int iy = (int) Math.round((NodeLayout.HEADER_HEIGHT - 8) / 2.0);
+            g.fill(ix, iy, ix + 8, iy + 8, NodeLayout.TEXT_COLOR);
+            g.fill(ix + 2, iy + 2, ix + 6, iy + 6, NodeLayout.HEADER_COLOR);
+            g.fill(ix + 3, iy + 3, ix + 5, iy + 5, NodeLayout.TEXT_COLOR);
+        }
         //? if !modern {
         g.pose().popPose();
         //?}
 
-        // InputWidget 行（名字左 + 当前值文本右对齐）
-        for (int i = 0; i < layout.widgetRowCount(); i++) {
-            if (i == editingWidgetIndex) {
-                continue;
+        // InputWidget 行（名字左 + 当前值文本右对齐；CUSTOM 行跳过，由宿主渲染器绘制）
+        {
+            double rowTop = NodeLayout.HEADER_HEIGHT;
+            for (int i = 0; i < layout.widgetRowCount(); i++) {
+                InputWidget w = node.widgets().get(i);
+                double rowH = w.height();
+                if (i != editingWidgetIndex && w.kind() != InputWidgetKind.CUSTOM) {
+                    int localRowY = (int) Math.round(rowTop + (rowH - FONT_HEIGHT) / 2.0);
+                    g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, w.name(),
+                            (int) Math.round(NodeLayout.PADDING),
+                            localRowY,
+                            NodeLayout.TEXT_COLOR);
+                    String valStr = String.valueOf(w.currentValue());
+                    int valWidth = font.width(valStr);
+                    g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, valStr,
+                            (int) Math.round(NodeLayout.NODE_WIDTH - NodeLayout.PADDING) - valWidth,
+                            localRowY,
+                            w.kind() == InputWidgetKind.DISPLAY ? NodeLayout.DISPLAY_VALUE_COLOR : NodeLayout.WIDGET_VALUE_COLOR);
+                }
+                rowTop += rowH;
             }
-            InputWidget w = node.widgets().get(i);
-            int localRowY = i * (int) Math.round(NodeLayout.ROW_HEIGHT)
-                    + (int) Math.round(NodeLayout.HEADER_HEIGHT)
-                    + (int) Math.round((NodeLayout.ROW_HEIGHT - FONT_HEIGHT) / 2.0);
-            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, w.name(),
-                    (int) Math.round(NodeLayout.PADDING),
-                    localRowY,
-                    NodeLayout.TEXT_COLOR);
-            String valStr = String.valueOf(w.currentValue());
-            int valWidth = font.width(valStr);
-            g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, valStr,
-                    (int) Math.round(NodeLayout.NODE_WIDTH - NodeLayout.PADDING) - valWidth,
-                    localRowY,
-                    NodeLayout.WIDGET_VALUE_COLOR);
         }
 
         // 端口区
-        int portTopLocal = (int) Math.round(NodeLayout.HEADER_HEIGHT)
-                + layout.widgetRowCount() * (int) Math.round(NodeLayout.ROW_HEIGHT);
+        int portTopLocal = (int) Math.round(NodeLayout.HEADER_HEIGHT + layout.widgetsHeight());
         for (int i = 0; i < node.inputs().size(); i++) {
             NodeLayout.PortAnchor a = layout.inputPort(i);
             int ax = (int) Math.round(a.x() - node.x());
