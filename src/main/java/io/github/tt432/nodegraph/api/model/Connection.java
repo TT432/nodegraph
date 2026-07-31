@@ -16,15 +16,27 @@ public final class Connection {
     private final int toInput;
     private final boolean autoConverted;
     private final TypeConversionRule rule;
+    /**
+     * Optional free-form label rendered at the wire midpoint (e.g. a Molang
+     * condition guarding the reference this wire represents). Not part of
+     * connection identity: equals/hashCode stay the endpoint quadruple.
+     */
+    private final String label;
 
     public Connection(NodeId fromNode, int fromOutput, NodeId toNode, int toInput,
                       boolean autoConverted, TypeConversionRule rule) {
+        this(fromNode, fromOutput, toNode, toInput, autoConverted, rule, "");
+    }
+
+    public Connection(NodeId fromNode, int fromOutput, NodeId toNode, int toInput,
+                      boolean autoConverted, TypeConversionRule rule, String label) {
         this.fromNode = Objects.requireNonNull(fromNode, "fromNode");
         this.fromOutput = fromOutput;
         this.toNode = Objects.requireNonNull(toNode, "toNode");
         this.toInput = toInput;
         this.autoConverted = autoConverted;
         this.rule = rule;
+        this.label = Objects.requireNonNull(label, "label");
     }
 
     public NodeId fromNode() {
@@ -52,6 +64,16 @@ public final class Connection {
         return rule;
     }
 
+    /** Wire midpoint label; empty string when unset. */
+    public String label() {
+        return label;
+    }
+
+    /** Copy of this connection carrying a different label. */
+    public Connection withLabel(String newLabel) {
+        return new Connection(fromNode, fromOutput, toNode, toInput, autoConverted, rule, newLabel);
+    }
+
     @Override
     public boolean equals(Object o) {
         return (o instanceof Connection c)
@@ -67,6 +89,7 @@ public final class Connection {
     @Override
     public String toString() {
         return "Connection[" + fromNode + ".out" + fromOutput + " -> " + toNode + ".in" + toInput
-                + (autoConverted ? " auto" : "") + "]";
+                + (autoConverted ? " auto" : "")
+                + (label.isEmpty() ? "" : " '" + label + "'") + "]";
     }
 }

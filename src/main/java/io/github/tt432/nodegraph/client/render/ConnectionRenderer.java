@@ -2,6 +2,7 @@ package io.github.tt432.nodegraph.client.render;
 
 import io.github.tt432.nodegraph.client.layout.NodeLayout;
 import io.github.tt432.nodegraph.client.viewport.Viewport;
+import net.minecraft.client.gui.Font;
 //? if !modern {
 import net.minecraft.client.gui.GuiGraphics;
 //?} else {
@@ -29,6 +30,9 @@ public final class ConnectionRenderer {
     public static final int WARN_COLOR = 0xFFFFAA00;
     public static final int WARN_MARK_SIZE = 4;
     public static final int PREVIEW_ALPHA = 0x80;
+    public static final int LABEL_MAX_CHARS = 48;
+    public static final int LABEL_BG = 0xA0101010;
+    public static final int LABEL_COLOR = 0xFFE8E8E8;
 
     private ConnectionRenderer() {
     }
@@ -101,6 +105,22 @@ public final class ConnectionRenderer {
         int ix = (int) Math.round(sx);
         int iy = (int) Math.round(sy);
         g.fill(ix - half, iy - half, ix + half, iy + half, WARN_COLOR);
+    }
+
+    /**
+     * 连线中点标签（如引用条件 Molang 原文），暗色底衬、居中、略高于连线。
+     * 超长文本截断到 {@link #LABEL_MAX_CHARS}。
+     */
+    public static void renderLabel(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, Font font,
+                                   String label, double midSx, double midSy) {
+        String text = label.length() <= LABEL_MAX_CHARS
+                ? label
+                : label.substring(0, LABEL_MAX_CHARS - 1) + "\u2026";
+        int w = font.width(text);
+        int x = (int) Math.round(midSx) - w / 2;
+        int y = (int) Math.round(midSy) - font.lineHeight - 3;
+        g.fill(x - 2, y - 1, x + w + 2, y + font.lineHeight + 1, LABEL_BG);
+        g./*? if !modern {*/ drawString /*?} else {*/ text /*?}*/(font, text, x, y, LABEL_COLOR);
     }
 
     /** 将颜色的 alpha 通道替换为给定值（保留 RGB）。 */

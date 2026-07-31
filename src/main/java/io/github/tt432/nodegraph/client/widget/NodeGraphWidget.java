@@ -797,6 +797,9 @@ public class NodeGraphWidget extends AbstractWidget {
             if (c.isAutoConverted()) {
                 ConnectionRenderer.renderWarnMark(g, mid[0], mid[1]);
             }
+            if (!c.label().isEmpty()) {
+                ConnectionRenderer.renderLabel(g, font, c.label(), mid[0], mid[1]);
+            }
         }
     }
 

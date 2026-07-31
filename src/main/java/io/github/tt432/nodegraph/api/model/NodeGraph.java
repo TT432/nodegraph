@@ -275,6 +275,17 @@ public final class NodeGraph {
      * @throws IllegalArgumentException if incompatible or endpoints invalid.
      */
     public Connection connect(NodeId fromNode, int fromOutput, NodeId toNode, int toInput) {
+        return connect(fromNode, fromOutput, toNode, toInput, "");
+    }
+
+    /**
+     * {@link #connect(NodeId, int, NodeId, int)} carrying a midpoint label
+     * (see {@link Connection#label()}). Multi-input idempotency is unchanged:
+     * re-connecting the same quadruple returns the existing connection and
+     * keeps its original label.
+     */
+    public Connection connect(NodeId fromNode, int fromOutput, NodeId toNode, int toInput, String label) {
+        Objects.requireNonNull(label, "label");
         ConnectResult result = canConnect(fromNode, fromOutput, toNode, toInput);
         if (result == ConnectResult.INCOMPATIBLE) {
             throw new IllegalArgumentException("Incompatible connection: "
@@ -301,7 +312,7 @@ public final class NodeGraph {
         TypeConversionRule rule = auto
                 ? types.conversion(outputType(fromNode, fromOutput), inputType(toNode, toInput)).orElse(null)
                 : null;
-        Connection c = new Connection(fromNode, fromOutput, toNode, toInput, auto, rule);
+        Connection c = new Connection(fromNode, fromOutput, toNode, toInput, auto, rule, label);
         connections.add(c);
         fireConnectionEvent(ConnectionEvent.Kind.CREATED, c);
         return c;
