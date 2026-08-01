@@ -181,6 +181,45 @@ public final class NodeRenderer {
     }
 
     /**
+     * 选中描边（屏幕 float 坐标）：4 条边各自 pose 平移到 float 起点后轴对齐 fill，
+     * 与节点体边缘精确贴合（不做屏幕坐标 int 取整）；宽度 1px 恒定。
+     */
+    public static void renderSelectionOutline(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g,
+                                              NodeLayout layout, Viewport vp, int originX, int originY, int color) {
+        Objects.requireNonNull(g, "g");
+        Objects.requireNonNull(layout, "layout");
+        Objects.requireNonNull(vp, "vp");
+        Node node = layout.node();
+        double s = vp.scale();
+        double sx = vp.worldToScreenX(node.x(), originX);
+        double sy = vp.worldToScreenY(node.y(), originY);
+        double sw = NodeLayout.NODE_WIDTH * s;
+        double sh = layout.height() * s;
+        int iw = Math.max(1, (int) Math.round(sw));
+        int ih = Math.max(1, (int) Math.round(sh));
+        edge(g, sx - 1, sy - 1, iw + 2, 1, color);
+        edge(g, sx - 1, sy + sh, iw + 2, 1, color);
+        edge(g, sx - 1, sy - 1, 1, ih + 2, color);
+        edge(g, sx + sw, sy - 1, 1, ih + 2, color);
+    }
+
+    /** 单条描边边：float 起点 translate + int 尺寸 fill。 */
+    private static void edge(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g,
+                             double x, double y, int w, int h, int color) {
+        //? if !modern {
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0.0);
+        g.fill(0, 0, w, h, color);
+        g.pose().popPose();
+        //?} else {
+        g.pose().pushMatrix();
+        g.pose().translate((float) x, (float) y);
+        g.fill(0, 0, w, h, color);
+        g.pose().popMatrix();
+        //?}
+    }
+
+    /**
      * 在屏幕坐标 {@code (mouseX,mouseY)} 处检测命中的端口/输入组件（端口优先）。
      * 返回该目标的 tooltip 行（name / Type: id / description）；无命中→empty。
      */

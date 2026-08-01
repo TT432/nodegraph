@@ -1056,15 +1056,7 @@ public class NodeGraphWidget extends AbstractWidget {
                 renderCustomWidgets(g, node, layout, mouseX, mouseY);
             }
             if (selection.containsNode(node.id())) {
-                int ix = (int) Math.floor(sx);
-                int iy = (int) Math.floor(sy);
-                int iw = (int) Math.round(sw);
-                int ih = (int) Math.round(sh);
-                //? if !modern {
-                g.renderOutline(ix - 1, iy - 1, iw + 2, ih + 2, SELECTED_COLOR);
-                //?} else {
-                g.outline(ix - 1, iy - 1, iw + 2, ih + 2, SELECTED_COLOR);
-                //?}
+                NodeRenderer.renderSelectionOutline(g, layout, viewport, x0, y0, SELECTED_COLOR);
             }
             if (firstHit.isEmpty()) {
                 firstHit = NodeRenderer.pickHover(layout, viewport, x0, y0, mouseX, mouseY);

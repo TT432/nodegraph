@@ -14,7 +14,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
  * （MC 1.20.1 无任意角度画线原语；LINES 模式需 POSITION_COLOR_NORMAL + shader，本环境无法 runClient 验证）。
  *
  * <p>三次贝塞尔：P0=源输出锚点，P3=目标输入锚点，控制点水平偏移使两端切线水平。
- * 采样得屏幕点序列，相邻点画轴对齐包围盒 fill（重叠区域自然填充 → 无缝连续）。
+ * 采样得屏幕点序列，相邻点画<b>旋转矩形</b>（pose 平移到 float 端点 → 旋转至段方向 →
+ * 轴对齐 fill），采样点补缝方块覆盖转角——全程屏幕 float 坐标，无包围盒近似。
  *
  * <p>不变量见 {@docRoot docs/task/nodegraph/TaskG/规格.md}。
  */
@@ -47,7 +48,7 @@ public final class ConnectionRenderer {
     public static double[] render(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, Viewport vp, int originX, int originY,
                                   NodeLayout from, int outIdx, NodeLayout to, int inIdx,
                                   int color, double halfThicknessWorld) {
-        int halfThickness = screenHalf(halfThicknessWorld, vp);
+        double halfScreen = screenHalf(halfThicknessWorld, vp);
         NodeLayout.PortAnchor fa = from.outputPort(outIdx);
         NodeLayout.PortAnchor ta = to.inputPort(inIdx);
         double sx0 = vp.worldToScreenX(fa.x(), originX);
@@ -61,12 +62,14 @@ public final class ConnectionRenderer {
         double dist = Math.hypot(sx3 - sx0, sy3 - sy0);
         int n = clamp(Math.round((float) (dist / STEP)), MIN_SEGMENTS, MAX_SEGMENTS);
         double px = sx0, py = sy0;
+        fillJoint(g, px, py, halfScreen, color);
         for (int i = 1; i <= n; i++) {
             double t = (double) i / n;
             double u = 1 - t;
             double qx = u * u * u * sx0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * sx3;
             double qy = u * u * u * sy0 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * sy3;
-            fillSegment(g, px, py, qx, qy, halfThickness, color);
+            fillSegment(g, px, py, qx, qy, halfScreen, color);
+            fillJoint(g, qx, qy, halfScreen, color);
             px = qx;
             py = qy;
         }
@@ -93,21 +96,23 @@ public final class ConnectionRenderer {
         double dist = Math.hypot(sx3 - sx0, sy3 - sy0);
         int n = clamp(Math.round((float) (dist / STEP)), MIN_SEGMENTS, MAX_SEGMENTS);
         double px = sx0, py = sy0;
-        int halfThickness = screenHalf(PREVIEW_HALF, vp);
+        double halfScreen = screenHalf(PREVIEW_HALF, vp);
+        fillJoint(g, px, py, halfScreen, color);
         for (int i = 1; i <= n; i++) {
             double t = (double) i / n;
             double u = 1 - t;
             double qx = u * u * u * sx0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * sx3;
             double qy = u * u * u * sy0 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * sy3;
-            fillSegment(g, px, py, qx, qy, halfThickness, color);
+            fillSegment(g, px, py, qx, qy, halfScreen, color);
+            fillJoint(g, qx, qy, halfScreen, color);
             px = qx;
             py = qy;
         }
     }
 
-    /** 世界半宽 → 屏幕半宽（随缩放等比变化，下限 1px）。 */
-    static int screenHalf(double halfThicknessWorld, Viewport vp) {
-        return Math.max(1, (int) Math.round(halfThicknessWorld * vp.scale()));
+    /** 世界半宽 → 屏幕半宽（float，随缩放等比变化；下限 0.5px 保证任何缩放下可见）。 */
+    static double screenHalf(double halfThicknessWorld, Viewport vp) {
+        return Math.max(0.5, halfThicknessWorld * vp.scale());
     }
 
     /** 自动转换警告方块标记。 */
@@ -143,13 +148,47 @@ public final class ConnectionRenderer {
         return Math.max(Math.abs(sx3 - sx0) * 0.5, MIN_CURVE_DX);
     }
 
+    /**
+     * 斜线段：pose 平移到 float 起点 → 旋转至段方向 → 轴对齐 fill 矩形。
+     * 矩形垂直中心对齐线段（translate(0,-halfScreen)），厚度为最接近 2×halfScreen 的整数（≥1px）。
+     */
     private static void fillSegment(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, double x0, double y0, double x1, double y1,
-                                    int halfThickness, int color) {
-        int minX = (int) Math.floor(Math.min(x0, x1) - halfThickness);
-        int minY = (int) Math.floor(Math.min(y0, y1) - halfThickness);
-        int maxX = (int) Math.ceil(Math.max(x0, x1) + halfThickness);
-        int maxY = (int) Math.ceil(Math.max(y0, y1) + halfThickness);
-        g.fill(minX, minY, maxX, maxY, color);
+                                    double halfScreen, int color) {
+        double dx = x1 - x0;
+        double dy = y1 - y0;
+        double len = Math.hypot(dx, dy);
+        if (len < 1.0e-4) {
+            fillJoint(g, x0, y0, halfScreen, color);
+            return;
+        }
+        int thickness = Math.max(1, (int) Math.round(halfScreen * 2));
+        int li = Math.max(1, (int) Math.round(len));
+        float angle = (float) Math.atan2(dy, dx);
+        //? if !modern {
+        g.pose().pushPose();
+        g.pose().translate(x0, y0, 0.0);
+        g.pose().mulPose(com.mojang.math.Axis.ZP.rotation(angle));
+        g.pose().translate(0.0, -halfScreen, 0.0);
+        g.fill(0, 0, li, thickness, color);
+        g.pose().popPose();
+        //?} else {
+        g.pose().pushMatrix();
+        g.pose().translate((float) x0, (float) y0);
+        g.pose().rotate(angle);
+        g.pose().translate(0.0f, (float) -halfScreen);
+        g.fill(0, 0, li, thickness, color);
+        g.pose().popMatrix();
+        //?}
+    }
+
+    /** 段间补缝/端帽方块：覆盖相邻旋转矩形在转角外侧的缺口。 */
+    private static void fillJoint(/*? if !modern {*/ GuiGraphics /*?} else {*/ GuiGraphicsExtractor /*?}*/ g, double x, double y,
+                                  double halfScreen, int color) {
+        int thickness = Math.max(1, (int) Math.round(halfScreen * 2));
+        int h = thickness / 2;
+        int ix = (int) Math.round(x);
+        int iy = (int) Math.round(y);
+        g.fill(ix - h, iy - h, ix - h + thickness, iy - h + thickness, color);
     }
 
     private static int clamp(int v, int min, int max) {
