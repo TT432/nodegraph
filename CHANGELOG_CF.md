@@ -1,3 +1,25 @@
+# NodeGraph 1.4.2
+
+## Changed
+
+- **连线渲染 float 化**：斜线段改为 pose 旋转 + 轴对齐填充（float 端点/厚度），
+  采样点补缝方块，替换包围盒近似；`screenHalf` 返回 double（下限 0.5px=厚度 1px），
+  不再 int 取整。
+- **选中描边亚像素贴合**：`NodeRenderer.renderSelectionOutline` 改 4 边 float
+  translate+fill，替换屏幕坐标 int floor 描边。
+
+---
+
+# NodeGraph 1.4.1
+
+## Added
+
+- **节点移除监听**：`NodeGraph.removeNode` 在连接级联清理后触发
+  `NodeRemoveListener`，宿主可在节点消失前结算连接派生状态；
+  与连接/widget 监听一致的同步派发 + 异常隔离。
+
+---
+
 # NodeGraph 1.4.0
 
 ## Added
