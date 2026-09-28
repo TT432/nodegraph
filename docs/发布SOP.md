@@ -38,12 +38,17 @@ gradlew.bat publishToSonatype --no-daemon -Dorg.gradle.java.home=<jdk25>
   当 root 无 group/version 时描述为 `:nodegraph:unspecified`（冒号开头），`\b` 匹配不上，查不到。
 - 兜底：直接调 OSSRH Staging API 手动 close：
   ```bash
-  curl -u "$ossrhUsername:$ossrhPassword" -X POST \
+  # gradle.properties 是 CRLF：必须 tr -d '\r'，否则 401；
+  # 同名键有多条时 Gradle 生效的是最后一条（tail -1），取错也 401。
+  USER=$(grep '^ossrhUsername=' ~/.gradle/gradle.properties | tail -1 | sed 's/^ossrhUsername=//' | tr -d '\r')
+  PASS=$(grep '^ossrhPassword=' ~/.gradle/gradle.properties | tail -1 | sed 's/^ossrhPassword=//' | tr -d '\r')
+  curl -u "$USER:$PASS" -X POST \
     https://ossrh-staging-api.central.sonatype.com/service/local/staging/bulk/close \
     -H 'Content-Type: application/json' \
-    -d '{"data":{"stagedRepositoryIds":["<repoId>"],"description":"release"}}'
+    -d '{"data":{"stagedRepositoryIds":["<repoId>"],"description":"release","autoDropAfterRelease":true}}'
   ```
   repoId 从 `findSonatypeStagingRepository` 的报错文本里抄（它会列出全部 open 仓库）。
+  `autoDropAfterRelease` 必填，缺了报 400；close 返回 200 即校验通过并进入自动发布。
 - **`/staging/bulk/release` 在该兼容层上不存在**（"not supported"）——close 成功即触发
   校验+自动发布，无需手动 release。同步到 repo1.maven.org 约 10–40 分钟。
 
