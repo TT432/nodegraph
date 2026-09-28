@@ -48,9 +48,17 @@ gradlew.bat publishToSonatype --no-daemon -Dorg.gradle.java.home=<jdk25>
     -d '{"data":{"stagedRepositoryIds":["<repoId>"],"description":"release","autoDropAfterRelease":true}}'
   ```
   repoId 从 `findSonatypeStagingRepository` 的报错文本里抄（它会列出全部 open 仓库）。
-  `autoDropAfterRelease` 必填，缺了报 400；close 返回 200 即校验通过并进入自动发布。
-- **`/staging/bulk/release` 在该兼容层上不存在**（"not supported"）——close 成功即触发
-  校验+自动发布，无需手动 release。同步到 repo1.maven.org 约 10–40 分钟。
+  `autoDropAfterRelease` 必填，缺了报 400；close 返回 200 仅表示校验通过（closed 态）。
+- **close 只到 closed 态，不会自动发布**——必须再调 `bulk/promote` 才真正释放（实测：
+  仅 close 后仓库滞留 closed 超 80 分钟不同步；promote 返回 200 后才开始同步）：
+  ```bash
+  curl -u "$USER:$PASS" -X POST \
+    https://ossrh-staging-api.central.sonatype.com/service/local/staging/bulk/promote \
+    -H 'Content-Type: application/json' \
+    -d '{"data":{"stagedRepositoryIds":["<repoId>"],"description":"release","autoDropAfterRelease":true}}'
+  ```
+  `/staging/bulk/release` 在该兼容层不存在（"not supported"），release 动词是 **promote**。
+  同步到 repo1.maven.org 在 promote 后约 10–40 分钟。
 
 ## CurseForge
 
