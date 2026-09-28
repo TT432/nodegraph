@@ -10,6 +10,8 @@ plugins {
 apply plugin: 'io.github.gradle-nexus.publish-plugin'
 
 nexusPublishing {
+    // Stonecutter 布局下 root 无 group，显式指定 staging profile 归属的包组。
+    packageGroup = 'io.github.tt432'
     repositories {
         sonatype {
             nexusUrl.set(uri('https://ossrh-staging-api.central.sonatype.com/service/local/'))
